@@ -1,0 +1,17 @@
+{
+  "name": "Winess Hub",
+  "short_name": "Winess Hub",
+  "description": "Coordination terrain premium et temps réel.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#06090F",
+  "theme_color": "#06090F",
+  "icons": [
+    {
+      "src": "assets/team/steven.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

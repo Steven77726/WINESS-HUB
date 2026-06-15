@@ -7,15 +7,8 @@
     <meta name="description" content="Winess Hub, coordination terrain premium et temps réel.">
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
-      <style>
-body{
-background:black !important;
-color:white !important;
-font-size:30px !important;
-}
-</style>
-    <link rel="stylesheet" href="styles.css?v=150">
-    <script type="module" src="app.js?v=150"></script>
+    <link rel="stylesheet" href="styles.css?v=180">
+    <script type="module" src="app.js?v=180"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -24,6 +17,9 @@ font-size:30px !important;
           <span class="brand-mark">W</span>
           <strong>Winess Hub</strong>
         </a>
+        <button class="sidebar-toggle" type="button" id="sidebarToggle" aria-label="Réduire ou ouvrir le menu">
+          <span></span>
+        </button>
         <nav class="nav-list" aria-label="Sections">
           <button class="nav-item is-active" type="button" data-view="accueil">Accueil</button>
           <button class="nav-item" type="button" data-view="commandes">Commandes</button>

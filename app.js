@@ -100,6 +100,7 @@ const elements = {
   spotlightResults: document.querySelector("#spotlightResults"),
   globalSearch: document.querySelector("#globalSearch"),
   availabilityPrompt: document.querySelector("#availabilityPrompt"),
+  sidebarToggle: document.querySelector("#sidebarToggle"),
   commandesList: document.querySelector("#commandesList"),
   livraisonsList: document.querySelector("#livraisonsList"),
   rappelsList: document.querySelector("#rappelsList"),
@@ -113,6 +114,7 @@ render();
 bindGlobalActions();
 checkBusyReminder();
 handleHash();
+setupSidebar();
 registerServiceWorker();
 
 function hydrate() {
@@ -250,6 +252,30 @@ function bindGlobalActions() {
   elements.avatarUpload.addEventListener("change", updateAvatar);
   document.querySelector("#closeDialog").addEventListener("click", () => elements.memberDialog.close());
   elements.globalSearch.addEventListener("input", search);
+}
+
+function setupSidebar() {
+  if (matchMedia("(max-width: 900px)").matches) document.body.classList.add("sidebar-collapsed");
+  elements.sidebarToggle?.addEventListener("click", () => {
+    document.body.classList.toggle("sidebar-collapsed");
+  });
+
+  let startX = 0;
+  let startY = 0;
+  document.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+  }, { passive: true });
+
+  document.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = Math.abs(touch.clientY - startY);
+    if (dy > 60 || Math.abs(dx) < 58) return;
+    if (startX < 34 && dx > 0) document.body.classList.remove("sidebar-collapsed");
+    if (dx < 0 && startX < 280) document.body.classList.add("sidebar-collapsed");
+  }, { passive: true });
 }
 
 function showView(view) {
