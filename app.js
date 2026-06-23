@@ -417,7 +417,7 @@ function recordStatusActivity(item, status) {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=290#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=291#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -518,6 +518,18 @@ function handleHash() {
 async function updateAvatar(event) {
   const file = event.target.files?.[0];
   if (!file || !selectedAvatar) return;
+  let avatarData = "";
+  try {
+    avatarData = await compressAvatar(file);
+  } catch {
+    showToast("Cette photo ne peut pas être lue");
+    return;
+  }
+  state.avatars[selectedAvatar] = avatarData;
+  save();
+  render();
+  showToast("Photo enregistrée, synchronisation...");
+
   if (supabaseClient) {
     try {
       const extension = (file.name.split(".").pop() || "jpg").replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -533,14 +545,43 @@ async function updateAvatar(event) {
       save(); render(); showToast("Photo de profil synchronisée");
       event.target.value = "";
       return;
-    } catch (error) {
-      console.error("Upload avatar impossible", error);
-      showToast("Photo conservée sur cet appareil uniquement");
+    } catch {
+      const synced = await syncProfileFallback(selectedAvatar, avatarData);
+      if (synced) {
+        showToast("Photo synchronisée sur tous les appareils");
+        event.target.value = "";
+        return;
+      }
     }
   }
-  const reader = new FileReader();
-  reader.onload = () => { state.avatars[selectedAvatar] = reader.result; save(); render(); };
-  reader.readAsDataURL(file);
+  showToast("Photo conservée sur cet appareil uniquement");
+  event.target.value = "";
+}
+
+function compressAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = reject;
+      image.onload = () => {
+        const size = 384;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d");
+        if (!context || !image.naturalWidth || !image.naturalHeight) { reject(new Error("Image invalide")); return; }
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const sourceX = (image.naturalWidth - sourceSize) / 2;
+        const sourceY = (image.naturalHeight - sourceSize) / 2;
+        context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function enablePush() {
@@ -654,8 +695,10 @@ async function initializeSupabase() {
     ]);
     if (taskError || activityError) throw taskError || activityError;
 
-    if (remoteTasks.length) {
-      state.tasks = remoteTasks.map((row) => migrateTask({ ...row.data, id: row.id }));
+    const fallbackProfiles = remoteTasks.filter((row) => row.data?.kind === "profile");
+    const taskRows = remoteTasks.filter((row) => row.data?.kind !== "profile");
+    if (taskRows.length) {
+      state.tasks = taskRows.map((row) => migrateTask({ ...row.data, id: row.id }));
     } else {
       const { error } = await supabaseClient.from("hub_tasks").upsert(state.tasks.map(taskRow));
       if (error) throw error;
@@ -663,7 +706,10 @@ async function initializeSupabase() {
     if (remoteActivity.length) {
       state.activity = remoteActivity.map((row) => ({ id: row.id, time: row.event_time, text: row.text, createdAt: new Date(row.created_at).getTime() }));
     }
+    fallbackProfiles.forEach((row) => { if (row.data?.avatar) state.avatars[row.data.profileId] = row.data.avatar; });
     (remoteProfiles || []).forEach((profile) => { if (profile.avatar_url) state.avatars[profile.id] = profile.avatar_url; });
+    const knownProfileIds = new Set([...fallbackProfiles.map((row) => row.data?.profileId), ...(remoteProfiles || []).map((profile) => profile.id)]);
+    const profilesToMigrate = Object.entries(state.avatars).filter(([id, avatar]) => !knownProfileIds.has(id) && String(avatar).startsWith("data:image/"));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     render();
     setSyncState("Synchronisé", true);
@@ -675,7 +721,10 @@ async function initializeSupabase() {
       .on("postgres_changes", { event: "*", schema: "public", table: "hub_tasks" }, applyRemoteTask)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "hub_activity" }, applyRemoteActivity);
     if (!profileError) realtimeChannel.on("postgres_changes", { event: "*", schema: "public", table: "hub_profiles" }, applyRemoteProfile);
-    realtimeChannel.subscribe((status) => setSyncState(status === "SUBSCRIBED" ? "Temps réel" : "Connexion...", status === "SUBSCRIBED"));
+    realtimeChannel.subscribe(async (status) => {
+      setSyncState(status === "SUBSCRIBED" ? "Temps réel" : "Connexion...", status === "SUBSCRIBED");
+      if (status === "SUBSCRIBED" && profilesToMigrate.length) await Promise.all(profilesToMigrate.map(([id, avatar]) => syncProfileFallback(id, avatar)));
+    });
   } catch (error) {
     console.warn("Supabase indisponible, stockage local conservé.", error);
     setSyncState("Mode local", false);
@@ -698,6 +747,15 @@ async function syncActivity(event) {
   const { error } = await supabaseClient.from("hub_activity").upsert({ id: event.id, event_time: event.time, text: event.text, created_by: memberIdForName(CURRENT_USER) });
   if (error) setSyncState("Hors ligne", false);
   else broadcastChange("activity_added", { activity: event });
+}
+
+async function syncProfileFallback(profileId, avatar) {
+  if (!supabaseClient) return false;
+  const profile = { kind: "profile", profileId, avatar, updatedAt: Date.now(), updatedBy: memberIdForName(CURRENT_USER) };
+  const { error } = await supabaseClient.from("hub_tasks").upsert({ id: `profile:${profileId}`, data: profile, updated_by: profile.updatedBy });
+  if (error) return false;
+  broadcastChange("profile_changed", { profile: { id: profileId, avatar_url: avatar } });
+  return true;
 }
 
 function broadcastChange(event, payload) {
@@ -723,6 +781,10 @@ function applyBroadcastProfile({ payload }) {
 function applyRemoteTask(payload) {
   const id = payload.old?.id || payload.new?.id;
   if (!id) return;
+  if (payload.new?.data?.kind === "profile") {
+    applyRemoteProfile({ new: { id: payload.new.data.profileId, avatar_url: payload.new.data.avatar } });
+    return;
+  }
   const index = state.tasks.findIndex((item) => item.id === id);
   if (payload.eventType === "DELETE") {
     if (index >= 0) state.tasks.splice(index, 1);

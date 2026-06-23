@@ -1166,3 +1166,38 @@ h1 {
   body.sidebar-collapsed .rubric-count { position: absolute; top: 3px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; font-size: 9px; }
   .rubric-actions { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 560px) {
+  .employee-grid,
+  .staff-grid {
+    grid-template-columns: minmax(0,1fr);
+  }
+
+  .employee-card {
+    min-height: 286px;
+    gap: 13px;
+    padding: 16px;
+  }
+
+  .photo {
+    width: 102px;
+    height: 102px;
+  }
+
+  .employee-bottom h3 {
+    font-size: 24px;
+  }
+
+  .task-chip {
+    min-height: 42px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .global-search input {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+}
