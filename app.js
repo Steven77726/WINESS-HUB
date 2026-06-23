@@ -34,13 +34,6 @@ const seedTasks = [
   task("facture", "Contrôler anomalie facture", "autre", "Valérie", "David", "Normale", "Demain matin", "Vérifier le montant.", 12)
 ];
 
-const sampleTools = {
-  commandes: [["Commande Azran", "2 coffrets · stock à confirmer"], ["Commande Azul", "Réservation en attente"]],
-  livraisons: [["Livraison hôtel", "Aujourd'hui 15h · Steven"], ["Départ Neuilly", "Adresse confirmée"]],
-  rappels: [["Rappeler Madame Cohen", "Aujourd'hui 17h · Zac"], ["Relance Instagram", "Aujourd'hui 18h"]],
-  stock: [["Azran assortiment", "Stock 24 · réservé 7 · disponible 17"], ["Pistaches", "Stock 18 · disponible 7"]]
-};
-
 const state = loadState();
 let selectedAvatar = "";
 
@@ -59,9 +52,13 @@ const el = {
   avatarUpload: document.querySelector("#avatarUpload"),
   iphoneHelp: document.querySelector("#iphoneHelp"),
   pushProfile: document.querySelector("#pushProfileSelect"),
-  pushState: document.querySelector("#pushState")
+  pushState: document.querySelector("#pushState"),
+  rubricTitle: document.querySelector("#rubricTitle"),
+  rubricSummary: document.querySelector("#rubricSummary"),
+  rubricList: document.querySelector("#rubricList")
 };
 
+save();
 render();
 bindGlobal();
 handleHash();
@@ -73,11 +70,39 @@ function task(id, title, missionType, assignee, createdBy, priority, due, notes,
 
 function loadState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    return { tasks: saved.tasks || seedTasks, avatars: saved.avatars || {}, activity: saved.activity || [] };
+    const source = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("winess-hub:v252") || "{}";
+    const saved = JSON.parse(source);
+    const tasks = (saved.tasks || seedTasks).map(migrateTask);
+    return { tasks, avatars: saved.avatars || {}, activity: saved.activity || [] };
   } catch {
     return { tasks: seedTasks, avatars: {}, activity: [] };
   }
+}
+
+function migrateTask(item) {
+  const missionType = item.missionType || legacyMissionType(item.category);
+  const statuses = statusesForType(missionType);
+  let status = item.status;
+  if (!statuses.includes(status)) {
+    if (["Nouvelle", "Vue", "Attribué"].includes(status)) status = statuses[0];
+    else if (["Prise en charge", "Pris en charge", "En cours"].includes(status)) status = statuses.includes("En cours") ? "En cours" : statuses.includes("Pris en charge") ? "Pris en charge" : statuses[1];
+    else if (["Terminée", "Terminé"].includes(status)) status = statuses[statuses.length - 1];
+    else status = statuses[0];
+  }
+  return { ...item, missionType, status, seenBy: item.seenBy || [], history: item.history || [], requested: Number(item.requested || 0), available: Number(item.available || 0) };
+}
+
+function legacyMissionType(category = "") {
+  const value = category.toLowerCase();
+  if (value.includes("commande")) return "preparation";
+  if (value.includes("livraison")) return "livraison";
+  if (value.includes("stock") || value.includes("inventaire")) return "inventaire";
+  if (value.includes("rappel")) return "rappel";
+  if (value.includes("litige")) return "litige";
+  if (value.includes("instagram")) return "instagram";
+  if (value.includes("fournisseur")) return "fournisseur";
+  if (value.includes("blocage")) return "blocage";
+  return "autre";
 }
 
 function save() {
@@ -91,6 +116,9 @@ function render() {
   renderMyTasks();
   renderTools();
   renderActivity();
+  renderRubricCounts();
+  const currentRubric = location.hash.match(/^#view-rubrique-(.+)$/)?.[1];
+  if (currentRubric) renderRubric(currentRubric);
   bindRendered();
 }
 
@@ -172,11 +200,48 @@ function toolTask(item) {
 }
 
 function renderTools() {
-  Object.entries(sampleTools).forEach(([name, items]) => {
-    const target = document.querySelector(`#${name}List`);
-    if (target) target.innerHTML = items.map(([title, meta]) => `<article class="tool-card gold"><strong>${title}</strong><p>${meta}</p></article>`).join("");
-  });
   el.archives.innerHTML = state.tasks.filter(isCompleted).map(toolTask).join("") || `<p class="empty-state">Aucune tâche terminée.</p>`;
+}
+
+function renderRubricCounts() {
+  document.querySelectorAll("[data-rubric]").forEach((button) => {
+    const count = state.tasks.filter((item) => item.missionType === button.dataset.rubric && !isCompleted(item)).length;
+    let badge = button.querySelector(".rubric-count");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "rubric-count";
+      button.appendChild(badge);
+    }
+    badge.textContent = count;
+  });
+}
+
+function renderRubric(key) {
+  const type = MISSION_TYPES[key] || MISSION_TYPES.autre;
+  const tasks = state.tasks.filter((item) => item.missionType === key).sort((a, b) => Number(isCompleted(a)) - Number(isCompleted(b)) || b.createdAt - a.createdAt);
+  const active = tasks.filter((item) => !isCompleted(item)).length;
+  el.rubricTitle.textContent = type.label;
+  el.rubricSummary.innerHTML = `<span>${active} active${active > 1 ? "s" : ""}</span><span>${tasks.length - active} terminée${tasks.length - active > 1 ? "s" : ""}</span>`;
+  el.rubricList.innerHTML = tasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche dans cette rubrique.</p>`;
+  el.rubricList.querySelectorAll("[data-open-task]").forEach((button) => button.addEventListener("click", () => openTask(button.dataset.openTask)));
+  el.rubricList.querySelectorAll("[data-remind]").forEach((button) => button.addEventListener("click", () => remindTask(button.dataset.remind)));
+}
+
+function rubricCard(item) {
+  const media = [item.photo ? "Photo" : "", item.voice ? "Vocal" : ""].filter(Boolean).join(" · ");
+  return `<article class="rubric-card ${isCompleted(item) ? "is-done" : ""}">
+    <header><div><strong>${item.title}</strong><p>Assigné à ${item.assignee} par ${item.createdBy}</p></div><span class="workflow-badge">${workflowStage(item)}</span></header>
+    <div class="rubric-meta"><span>${item.status}</span><span>${item.priority}</span><span>${item.due}</span></div>
+    ${item.notes ? `<p class="rubric-notes">${item.notes}</p>` : ""}
+    ${media ? `<p class="rubric-media">${media}</p>` : ""}
+    <div class="rubric-actions"><button data-remind="${item.id}" type="button">Relancer</button><button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
+  </article>`;
+}
+
+function workflowStage(item) {
+  if (isCompleted(item)) return "Terminé";
+  if (isInitialStatus(item)) return "Attribué";
+  return "En cours";
 }
 
 function renderActivity() {
@@ -197,7 +262,7 @@ function openCreator(assignee) {
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Nouvelle tâche</p><h2>Attribuer à ${assignee}</h2></div></header>
     <form class="task-form" id="taskForm">
       <label>Titre<input name="title" required placeholder="Préparer commande"></label>
-      <label>Type de mission<select name="missionType">${Object.entries(MISSION_TYPES).map(([key, type]) => `<option value="${key}">${type.label}</option>`).join("")}</select></label>
+      <label>Rubrique<select name="missionType" required>${Object.entries(MISSION_TYPES).map(([key, type]) => `<option value="${key}">${type.label}</option>`).join("")}</select></label>
       <label>Priorité<select name="priority"><option>Normale</option><option>Haute</option><option>🔥 Urgente</option></select></label>
       <label>Date / heure<input name="due" placeholder="Aujourd'hui 18h"></label>
       <label>Quantité demandée<input name="requested" type="number" min="0" inputmode="numeric" placeholder="12"></label>
@@ -342,7 +407,9 @@ function bindGlobal() {
 
 function showView(name) {
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === name));
-  document.querySelectorAll("[data-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.panel === name));
+  const rubricKey = name.startsWith("rubrique-") ? name.replace("rubrique-", "") : "";
+  document.querySelectorAll("[data-panel]").forEach((panel) => panel.classList.toggle("is-active", rubricKey ? panel.dataset.panel === "rubrique" : panel.dataset.panel === name));
+  if (rubricKey) renderRubric(rubricKey);
   location.hash = `view-${name}`;
 }
 

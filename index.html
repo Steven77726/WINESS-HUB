@@ -9,8 +9,8 @@
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/winess-icon.svg">
-    <link rel="stylesheet" href="styles.css?v=270">
-    <script type="module" src="app.js?v=270"></script>
+    <link rel="stylesheet" href="styles.css?v=280">
+    <script type="module" src="app.js?v=280"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -20,10 +20,15 @@
         <nav class="nav-list" aria-label="Navigation">
           <button class="nav-item is-active" data-view="accueil" type="button">Accueil</button>
           <button class="nav-item" data-view="mes-taches" type="button">Mes tâches <span class="nav-badge" id="myTasksBadge">0</span></button>
-          <button class="nav-item" data-view="commandes" type="button">Commandes</button>
-          <button class="nav-item" data-view="livraisons" type="button">Livraisons</button>
-          <button class="nav-item" data-view="rappels" type="button">Rappels</button>
-          <button class="nav-item" data-view="stock" type="button">Stock Épicerie</button>
+          <button class="nav-item" data-view="rubrique-preparation" data-rubric="preparation" data-icon="📦" type="button">Préparation commande</button>
+          <button class="nav-item" data-view="rubrique-blocage" data-rubric="blocage" data-icon="📌" type="button">Blocage produit</button>
+          <button class="nav-item" data-view="rubrique-livraison" data-rubric="livraison" data-icon="🚚" type="button">Livraison</button>
+          <button class="nav-item" data-view="rubrique-inventaire" data-rubric="inventaire" data-icon="📊" type="button">Inventaire</button>
+          <button class="nav-item" data-view="rubrique-rappel" data-rubric="rappel" data-icon="📞" type="button">Rappel client</button>
+          <button class="nav-item" data-view="rubrique-litige" data-rubric="litige" data-icon="⚠️" type="button">Litige</button>
+          <button class="nav-item" data-view="rubrique-fournisseur" data-rubric="fournisseur" data-icon="🛒" type="button">Commande fournisseur</button>
+          <button class="nav-item" data-view="rubrique-instagram" data-rubric="instagram" data-icon="📱" type="button">Relance Instagram</button>
+          <button class="nav-item" data-view="rubrique-autre" data-rubric="autre" data-icon="📋" type="button">Autre</button>
           <button class="nav-item" data-view="activite" type="button">Activité</button>
           <button class="nav-item" data-view="archives" type="button">Archives</button>
         </nav>
@@ -59,10 +64,7 @@
           <div class="tool-list" id="myTasksList"></div>
         </section>
 
-        <section class="view tool-view" data-panel="commandes"><p class="eyebrow">Commandes</p><h2>Commandes magasin</h2><div class="tool-list" id="commandesList"></div></section>
-        <section class="view tool-view" data-panel="livraisons"><p class="eyebrow">Livraisons</p><h2>Départs et préparations</h2><div class="tool-list" id="livraisonsList"></div></section>
-        <section class="view tool-view" data-panel="rappels"><p class="eyebrow">Rappels</p><h2>À ne pas oublier</h2><div class="tool-list" id="rappelsList"></div></section>
-        <section class="view tool-view" data-panel="stock"><p class="eyebrow">Stock Épicerie</p><h2>Disponibilités</h2><div class="tool-list" id="stockList"></div></section>
+        <section class="view tool-view" data-panel="rubrique"><p class="eyebrow">Rubrique</p><h2 id="rubricTitle"></h2><div class="rubric-summary" id="rubricSummary"></div><div class="tool-list" id="rubricList"></div></section>
         <section class="view tool-view" data-panel="activite"><p class="eyebrow">Activité</p><h2>Journal de bord</h2><div class="activity-feed" id="activityList"></div></section>
         <section class="view tool-view" data-panel="archives"><p class="eyebrow">Archives</p><h2>Tâches terminées</h2><div class="tool-list" id="archivesList"></div></section>
       </main>
