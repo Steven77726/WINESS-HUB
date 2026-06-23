@@ -1,427 +1,277 @@
-const STORAGE_KEY = "winess-hub:v5";
-const CURRENT_USER_ID = "steven";
-const BUSY_REMINDER_DELAY = 20 * 60 * 1000;
+const STORAGE_KEY = "winess-hub:v252";
+const CURRENT_USER = "Steven";
+const STATUSES = ["Nouvelle", "Vue", "Prise en charge", "Terminée"];
+const TWO_HOURS = 2 * 60 * 60 * 1000;
+const PUSH_API_BASE = "https://winess-hub-push.example.com";
+const VAPID_PUBLIC_KEY = "REMPLACE_MOI_PAR_LA_CLE_VAPID_PUBLIQUE";
 
 const members = [
-  {
-    id: "david",
-    group: "direction",
-    name: "David",
-    role: "Direction",
-    avatar: "",
-    status: "available",
-    tasks: ["🟠 Validation Azran", "🔴 Litige fournisseur"],
-    priorities: ["🔥 Valider commande hôtel"]
-  },
-  {
-    id: "zacharie",
-    group: "direction",
-    name: "Zacharie",
-    role: "Direction",
-    avatar: "",
-    status: "available",
-    tasks: ["📞 Rappeler Mme Cohen", "⚠️ Litige client"],
-    priorities: ["🔥 Rappeler Cohen"]
-  },
-  {
-    id: "valerie",
-    group: "direction",
-    name: "Valérie",
-    role: "Direction",
-    avatar: "",
-    status: "available",
-    tasks: ["⚠️ Anomalie facture"],
-    priorities: []
-  },
-  {
-    id: "steven",
-    group: "staff",
-    name: "Steven",
-    role: "Staff",
-    avatar: "assets/team/steven.svg",
-    status: "available",
-    tasks: ["📦 Préparer commande Azran", "🧀 Vérification stock Azul", "🚚 Livraison hôtel"],
-    priorities: ["🔥 Préparer Azran", "🔥 Livraison hôtel 15h"]
-  },
-  {
-    id: "theo",
-    group: "staff",
-    name: "Théo",
-    role: "Staff",
-    avatar: "",
-    status: "available",
-    tasks: ["📍 Mettre de côté", "📦 Vérifier reliquat"],
-    priorities: ["🔥 Vérifier reliquat"]
-  }
+  { id: "david", name: "David", role: "Direction", group: "direction" },
+  { id: "valerie", name: "Valérie", role: "Direction", group: "direction" },
+  { id: "zac", name: "Zac", role: "Direction", group: "direction" },
+  { id: "steven", name: "Steven", role: "Staff", group: "staff" },
+  { id: "theo", name: "Théo", role: "Staff", group: "staff" }
 ];
 
-const tools = {
-  commandes: [
-    { title: "Commande Azran", meta: "2 coffrets + contrôle dispo Wino", tone: "gold" },
-    { title: "Commande Azul", meta: "Stock réservé à confirmer", tone: "blue" },
-    { title: "Commande magasin Benhamou", meta: "Terminée et archivée", tone: "green" }
-  ],
-  livraisons: [
-    { title: "Livraison hôtel 15h", meta: "Priorité Staff · Steven", tone: "red" },
-    { title: "Départ Neuilly", meta: "Sac isotherme + ticket", tone: "gold" }
-  ],
-  rappels: [
-    { title: "Rappeler Mme Cohen", meta: "En retard · Zacharie", tone: "red" },
-    { title: "Relance Instagram", meta: "Aujourd'hui 17h", tone: "gold" }
-  ],
-  stock: [
-    { title: "Azran assortiment", meta: "Wino 24 · réservé 7 · disponible 17", tone: "green" },
-    { title: "Pistaches grillées", meta: "Wino 18 · réservé 11 · disponible 7", tone: "gold" },
-    { title: "Saumon fumé", meta: "Wino 9 · réservé 8 · disponible 1", tone: "red" }
-  ],
-  notifications: [
-    { title: "Nouvelle tâche", meta: "Préparer commande Azran assignée à Steven", tone: "gold" },
-    { title: "Vocal ajouté", meta: "Note vocale sur livraison hôtel", tone: "blue" },
-    { title: "Tâche terminée", meta: "Commande Benhamou validée", tone: "green" }
-  ],
-  archives: [
-    { title: "Commande Benhamou", meta: "Terminée · historique conservé", tone: "green" },
-    { title: "Relance fournisseur", meta: "Archivée sans suppression", tone: "blue" }
-  ]
+const seedTasks = [
+  task("azran", "Préparer commande Azran", "Commande", "Théo", "David", "🔥 Urgente", "Aujourd'hui 18h", "Préparer la commande magasin.", 25),
+  task("azul", "Vérifier stock Azul", "Stock", "Steven", "Zac", "🔥 Urgente", "Aujourd'hui 15h", "Contrôler le disponible réel.", 90, "Prise en charge"),
+  task("litige", "Valider litige fournisseur", "Litige", "David", "Steven", "Haute", "Aujourd'hui 16h", "Écart de prix à arbitrer.", 140),
+  task("cohen", "Rappeler Madame Cohen", "Rappel", "Zac", "Steven", "Normale", "Aujourd'hui 17h", "Client à rappeler avant 18h.", 40),
+  task("facture", "Contrôler anomalie facture", "Anomalie", "Valérie", "David", "Normale", "Demain matin", "Vérifier le montant.", 12)
+];
+
+const sampleTools = {
+  commandes: [["Commande Azran", "2 coffrets · stock à confirmer"], ["Commande Azul", "Réservation en attente"]],
+  livraisons: [["Livraison hôtel", "Aujourd'hui 15h · Steven"], ["Départ Neuilly", "Adresse confirmée"]],
+  rappels: [["Rappeler Madame Cohen", "Aujourd'hui 17h · Zac"], ["Relance Instagram", "Aujourd'hui 18h"]],
+  stock: [["Azran assortiment", "Stock 24 · réservé 7 · disponible 17"], ["Pistaches", "Stock 18 · disponible 7"]]
 };
 
-const state = {
-  selectedAvatarId: "",
-  profiles: {}
-};
+const state = loadState();
+let selectedAvatar = "";
 
-const elements = {
-  directionGrid: document.querySelector("#directionGrid"),
-  staffGrid: document.querySelector("#staffGrid"),
-  viewTitle: document.querySelector("#viewTitle"),
-  avatarUpload: document.querySelector("#avatarUpload"),
+const el = {
+  direction: document.querySelector("#directionGrid"),
+  staff: document.querySelector("#staffGrid"),
+  myTasks: document.querySelector("#myTasksList"),
+  badge: document.querySelector("#myTasksBadge"),
+  activity: document.querySelector("#activityList"),
+  archives: document.querySelector("#archivesList"),
   memberDialog: document.querySelector("#memberDialog"),
   memberDetails: document.querySelector("#memberDetails"),
-  spotlightResults: document.querySelector("#spotlightResults"),
-  globalSearch: document.querySelector("#globalSearch"),
-  availabilityPrompt: document.querySelector("#availabilityPrompt"),
-  sidebarToggle: document.querySelector("#sidebarToggle"),
-  commandesList: document.querySelector("#commandesList"),
-  livraisonsList: document.querySelector("#livraisonsList"),
-  rappelsList: document.querySelector("#rappelsList"),
-  stockGrid: document.querySelector("#stockGrid"),
-  notificationsList: document.querySelector("#notificationsList"),
-  archivesList: document.querySelector("#archivesList")
+  taskDialog: document.querySelector("#taskDialog"),
+  taskDetails: document.querySelector("#taskDetails"),
+  avatarUpload: document.querySelector("#avatarUpload"),
+  iphoneHelp: document.querySelector("#iphoneHelp")
 };
 
-hydrate();
 render();
-bindGlobalActions();
-checkBusyReminder();
+bindGlobal();
 handleHash();
-setupSidebar();
 registerServiceWorker();
 
-function hydrate() {
+function task(id, title, category, assignee, createdBy, priority, due, notes, minutesAgo, status = "Nouvelle") {
+  return { id, title, category, assignee, createdBy, priority, due, notes, status, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy}`] };
+}
+
+function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    state.profiles = saved.profiles || {};
+    return { tasks: saved.tasks || seedTasks, avatars: saved.avatars || {}, activity: saved.activity || [] };
   } catch {
-    state.profiles = {};
+    return { tasks: seedTasks, avatars: {}, activity: [] };
   }
 }
 
-function persist() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ profiles: state.profiles }));
-  } catch {
-    // Le prototype reste utilisable même si le stockage local est bloqué.
-  }
-}
-
-function profileFor(member) {
-  return {
-    avatar: member.avatar,
-    status: member.status,
-    ...state.profiles[member.id]
-  };
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function render() {
-  elements.directionGrid.innerHTML = members.filter((member) => member.group === "direction").map(memberCard).join("");
-  elements.staffGrid.innerHTML = members.filter((member) => member.group === "staff").map(memberCard).join("");
-  renderToolViews();
-  bindCards();
+  el.direction.innerHTML = members.filter((m) => m.group === "direction").map(memberCard).join("");
+  el.staff.innerHTML = members.filter((m) => m.group === "staff").map(memberCard).join("");
+  renderMyTasks();
+  renderTools();
+  renderActivity();
+  bindRendered();
+}
+
+function activeTasksFor(name) {
+  return state.tasks.filter((item) => item.assignee === name && item.status !== "Terminée");
+}
+
+function isOverdue(item) {
+  return !["Prise en charge", "Terminée"].includes(item.status) && Date.now() - item.createdAt > TWO_HOURS;
 }
 
 function memberCard(member) {
-  const profile = profileFor(member);
-  const isBusy = profile.status === "busy";
-  const avatar = profile.avatar || "";
-  return `
-    <article class="employee-card ${member.group}" data-member="${member.id}" tabindex="0" role="button" aria-label="Ouvrir ${member.name}">
-      <input class="status-radio status-available-radio" id="status-${member.id}-available" name="status-${member.id}" type="radio" ${!isBusy ? "checked" : ""}>
-      <input class="status-radio status-busy-radio" id="status-${member.id}-busy" name="status-${member.id}" type="radio" ${isBusy ? "checked" : ""}>
-      <div class="employee-top">
-        <span class="photo">
-          ${avatar ? `<img src="${avatar}" alt="Avatar ${member.name}">` : `<span>${member.name.slice(0, 1)}</span>`}
-          <span class="presence available">🟢 Disponible</span>
-          <span class="presence busy">🌙 Occupé</span>
-          <button class="avatar-edit" type="button" data-avatar="${member.id}" aria-label="Modifier avatar ${member.name}">+</button>
-        </span>
-      </div>
-      <div class="availability-toggle">
-        <label class="status-choice available-choice" for="status-${member.id}-available" aria-label="${member.name} disponible" title="Disponible">🟢</label>
-        <label class="status-choice busy-choice" for="status-${member.id}-busy" aria-label="${member.name} occupé" title="Occupé">🌙</label>
-      </div>
-      <div class="employee-tags">
-        ${member.tasks.slice(0, 3).map((task) => `<button type="button" class="task-chip" data-task="${member.id}:${task}">${task}</button>`).join("")}
-      </div>
-      <div class="employee-bottom">
-        <div>
-          <h3>${member.name}</h3>
-          <p>${member.role}</p>
-        </div>
-        <div class="employee-counts">
-          <span>${member.tasks.length} tâches</span>
-          <span>${member.priorities.length} priorités</span>
-        </div>
-      </div>
-    </article>
-  `;
+  const tasks = activeTasksFor(member.name);
+  const avatar = state.avatars[member.id];
+  return `<article class="employee-card ${member.group}" data-member="${member.id}">
+    <div class="employee-top">
+      <button class="photo" data-avatar="${member.id}" type="button" aria-label="Changer la photo de ${member.name}">
+        ${avatar ? `<img src="${avatar}" alt="${member.name}">` : `<span>${member.name[0]}</span>`}
+        ${tasks.length ? `<span class="task-badge">${tasks.length}</span>` : ""}
+      </button>
+      <button class="profile-plus" data-add-task="${member.name}" type="button">+</button>
+    </div>
+    <div class="employee-tags">
+      ${tasks.slice(0, 3).map((item) => `<button class="task-chip ${isOverdue(item) || item.priority.includes("Urgente") ? "urgent" : ""}" data-open-task="${item.id}" type="button">${isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : ""}${item.title}</button>`).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
+      ${tasks.length > 3 ? `<button class="task-chip more-chip" data-member="${member.id}" type="button">+${tasks.length - 3} autres</button>` : ""}
+    </div>
+    <div class="employee-bottom"><div><h3>${member.name}</h3><p>${member.role}</p></div></div>
+  </article>`;
 }
 
-function renderToolViews() {
-  elements.commandesList.innerHTML = tools.commandes.map(toolItem).join("");
-  elements.livraisonsList.innerHTML = tools.livraisons.map(toolItem).join("");
-  elements.rappelsList.innerHTML = tools.rappels.map(toolItem).join("");
-  elements.stockGrid.innerHTML = tools.stock.map(toolItem).join("");
-  elements.notificationsList.innerHTML = tools.notifications.map(toolItem).join("");
-  elements.archivesList.innerHTML = tools.archives.map(toolItem).join("");
+function renderMyTasks() {
+  const tasks = activeTasksFor(CURRENT_USER);
+  el.badge.textContent = tasks.length;
+  el.myTasks.innerHTML = tasks.map(toolTask).join("") || `<p class="empty-state">Aucune tâche active.</p>`;
 }
 
-function toolItem(item) {
-  return `
-    <article class="tool-card ${item.tone}" data-tool-item="${item.title}">
-      <strong>${item.title}</strong>
-      <p>${item.meta}</p>
-    </article>
-  `;
+function toolTask(item) {
+  return `<article class="tool-card ${isOverdue(item) ? "red" : "gold"}">
+    <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}</button>
+    <p>${item.status} · assignée par ${item.createdBy} · ${item.due}</p>
+    <div class="task-actions-row"><button data-status="${item.id}:Prise en charge" type="button">Prise en charge</button><button data-status="${item.id}:Terminée" type="button">Terminée</button></div>
+  </article>`;
 }
 
-function bindCards() {
-  document.querySelectorAll("[data-member]").forEach((card) => {
-    card.addEventListener("click", () => openMember(card.dataset.member));
+function renderTools() {
+  Object.entries(sampleTools).forEach(([name, items]) => {
+    const target = document.querySelector(`#${name}List`);
+    if (target) target.innerHTML = items.map(([title, meta]) => `<article class="tool-card gold"><strong>${title}</strong><p>${meta}</p></article>`).join("");
   });
-  document.querySelectorAll("[data-avatar]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      state.selectedAvatarId = button.dataset.avatar;
-      elements.avatarUpload.click();
-    });
-  });
-  document.querySelectorAll("[data-status]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const [id, status] = button.dataset.status.split(":");
-      setStatus(id, status, event);
-    });
-  });
-  document.querySelectorAll(".status-radio").forEach((input) => {
-    input.addEventListener("change", () => {
-      const id = input.name.replace("status-", "");
-      const status = input.classList.contains("status-busy-radio") ? "busy" : "available";
-      state.profiles[id] = { ...state.profiles[id], status, busySince: status === "busy" ? Date.now() : 0 };
-      persist();
-      checkBusyReminder();
-    });
-  });
-  document.querySelectorAll(".availability-toggle label").forEach((label) => {
-    label.addEventListener("click", (event) => event.stopPropagation());
-  });
-  document.querySelectorAll("[data-task]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const [id, task] = button.dataset.task.split(":");
-      openMember(id, task);
-    });
-  });
+  el.archives.innerHTML = state.tasks.filter((item) => item.status === "Terminée").map(toolTask).join("") || `<p class="empty-state">Aucune tâche terminée.</p>`;
 }
 
-function bindGlobalActions() {
-  document.addEventListener("click", handleDelegatedClick, true);
+function renderActivity() {
+  const events = state.activity.length ? state.activity : [{ time: "14:01", text: "Didier a créé Commande Azran" }, { time: "14:22", text: "Steven a vu Vérifier stock Azul" }];
+  el.activity.innerHTML = events.map((event) => `<article class="activity-item"><span>${event.time}</span><p>${event.text}</p></article>`).join("");
+}
+
+function bindRendered() {
+  document.querySelectorAll("[data-open-task]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); openTask(button.dataset.openTask); }));
+  document.querySelectorAll("[data-add-task]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); openCreator(button.dataset.addTask); }));
+  document.querySelectorAll("[data-avatar]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); selectedAvatar = button.dataset.avatar; el.avatarUpload.click(); }));
+  document.querySelectorAll("[data-member]").forEach((card) => card.addEventListener("click", () => openMember(card.dataset.member)));
+  document.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => updateStatus(button.dataset.status)));
+}
+
+function openCreator(assignee) {
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Nouvelle tâche</p><h2>Attribuer à ${assignee}</h2></div></header>
+    <form class="task-form" id="taskForm">
+      <label>Titre<input name="title" required placeholder="Préparer commande"></label>
+      <label>Catégorie<select name="category"><option>Commande</option><option>Livraison</option><option>Stock</option><option>Rappel</option><option>Litige</option><option>Autre</option></select></label>
+      <label>Priorité<select name="priority"><option>Normale</option><option>Haute</option><option>🔥 Urgente</option></select></label>
+      <label>Date / heure<input name="due" placeholder="Aujourd'hui 18h"></label>
+      <label class="wide">Notes<textarea name="notes" placeholder="Ajouter une note"></textarea></label>
+      <button class="primary-action visible" type="submit">Créer la tâche</button>
+    </form>`;
+  document.querySelector("#taskForm").addEventListener("submit", (event) => createTask(event, assignee));
+  el.taskDialog.showModal();
+}
+
+function createTask(event, assignee) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const item = { id: `task-${Date.now()}`, title: form.get("title"), category: form.get("category"), assignee, createdBy: CURRENT_USER, priority: form.get("priority"), due: form.get("due") || "À planifier", notes: form.get("notes"), status: "Nouvelle", createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} à ${timeNow()}`] };
+  state.tasks.unshift(item);
+  addActivity(`${CURRENT_USER} a créé ${item.title} pour ${assignee}`);
+  save(); render(); el.taskDialog.close();
+  sendPush(assignee, "Nouvelle tâche Winess Hub", `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`);
+}
+
+function openTask(id) {
+  let item = state.tasks.find((task) => task.id === id);
+  if (!item) return;
+  if (!item.seenBy.some((seen) => seen.user === CURRENT_USER)) {
+    item.seenBy.push({ user: CURRENT_USER, time: timeNow() });
+    if (item.status === "Nouvelle") item.status = "Vue";
+    item.history.push(`Vu par ${CURRENT_USER} à ${timeNow()}`);
+    addActivity(`${CURRENT_USER} a vu ${item.title}`);
+    save(); render();
+    item = state.tasks.find((task) => task.id === id);
+  }
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${item.category}</p><h2>${item.title}</h2><p class="assignment-line">Assigné à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+    <section class="task-detail-grid"><article><span>Statut</span><strong>${item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date</span><strong>${item.due}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
+    <section class="read-status"><h3>Lecture</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
+    <section class="task-form single"><label>Notes<textarea id="taskNotes">${item.notes || ""}</textarea></label><label>Statut<select id="taskStatus">${STATUSES.map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></section>
+    <div class="task-form-actions"><button id="saveTask" type="button">Valider</button><button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
+    <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
+  document.querySelector("#saveTask").addEventListener("click", () => { item.notes = document.querySelector("#taskNotes").value; item.status = document.querySelector("#taskStatus").value; item.history.push(`Modifiée par ${CURRENT_USER} à ${timeNow()}`); addActivity(`${CURRENT_USER} a mis à jour ${item.title}`); save(); render(); el.taskDialog.close(); });
+  document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
+  document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
+  el.taskDialog.showModal();
+}
+
+function shareTask(item) {
+  const url = `https://steven77726.github.io/WINESS-HUB/#task-${item.id}`;
+  const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate : ${item.due}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
+  if (navigator.share) navigator.share({ title: item.title, text, url }).catch(() => {}); else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+}
+
+function updateStatus(value) {
+  const [id, status] = value.split(":");
+  const item = state.tasks.find((task) => task.id === id);
+  if (!item) return;
+  item.status = status; item.history.push(`${status} par ${CURRENT_USER} à ${timeNow()}`); addActivity(`${CURRENT_USER} : ${item.title} → ${status}`); save(); render();
+  if (status === "Terminée") sendPush(item.createdBy, "Tâche terminée", `${CURRENT_USER} a terminé : ${item.title}`, `#task-${item.id}`);
+}
+
+function openMember(id) {
+  const member = members.find((item) => item.id === id);
+  if (!member) return;
+  const tasks = state.tasks.filter((item) => item.assignee === member.name);
+  el.memberDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Profil</p><h2>${member.name}</h2><p>${member.role}</p></div></header><section class="task-list"><h3>En cours</h3>${tasks.filter((item) => item.status !== "Terminée").map(toolTask).join("") || `<p>Aucune tâche.</p>`}</section><details class="profile-done"><summary>Terminées</summary>${tasks.filter((item) => item.status === "Terminée").map(toolTask).join("") || `<p>Aucune tâche terminée.</p>`}</details>`;
+  el.memberDetails.querySelectorAll("[data-open-task]").forEach((button) => button.addEventListener("click", () => openTask(button.dataset.openTask)));
+  el.memberDialog.showModal();
+}
+
+function bindGlobal() {
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
+  document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
+  document.querySelector("#sidebarToggle").addEventListener("click", () => document.body.classList.toggle("sidebar-collapsed"));
+  document.querySelector("#enablePushButton").addEventListener("click", enablePush);
+  el.avatarUpload.addEventListener("change", updateAvatar);
   window.addEventListener("hashchange", handleHash);
-  document.querySelectorAll("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.view));
-  });
-  elements.avatarUpload.addEventListener("change", updateAvatar);
-  document.querySelector("#closeDialog").addEventListener("click", () => elements.memberDialog.close());
-  elements.globalSearch.addEventListener("input", search);
-}
-
-function setupSidebar() {
   if (matchMedia("(max-width: 900px)").matches) document.body.classList.add("sidebar-collapsed");
-  elements.sidebarToggle?.addEventListener("click", () => {
-    document.body.classList.toggle("sidebar-collapsed");
-  });
-
-  let startX = 0;
-  let startY = 0;
-  document.addEventListener("touchstart", (event) => {
-    const touch = event.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
-  }, { passive: true });
-
-  document.addEventListener("touchend", (event) => {
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - startX;
-    const dy = Math.abs(touch.clientY - startY);
-    if (dy > 60 || Math.abs(dx) < 58) return;
-    if (startX < 34 && dx > 0) document.body.classList.remove("sidebar-collapsed");
-    if (dx < 0 && startX < 280) document.body.classList.add("sidebar-collapsed");
-  }, { passive: true });
 }
 
-function showView(view) {
-  document.querySelectorAll("[data-view]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.view === view);
-  });
-  document.querySelectorAll("[data-panel]").forEach((panel) => {
-    panel.classList.toggle("is-active", panel.dataset.panel === view);
-  });
-  elements.viewTitle.textContent = view === "accueil" ? "Bonjour Steven" : document.querySelector(`[data-view="${view}"]`).textContent;
-  elements.spotlightResults.classList.remove("is-visible");
+function showView(name) {
+  document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.view === name));
+  document.querySelectorAll("[data-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.panel === name));
+  location.hash = `view-${name}`;
 }
 
-function handleDelegatedClick(event) {
-  const statusButton = event.target.closest?.("[data-status]");
-  if (statusButton) {
-    const [id, status] = statusButton.dataset.status.split(":");
-    setStatus(id, status, event);
-    return;
-  }
-
-  const resultButton = event.target.closest?.("[data-result]");
-  if (resultButton) {
-    elements.globalSearch.value = "";
-    elements.spotlightResults.classList.remove("is-visible");
-  }
-}
-
-function setStatus(id, status, event) {
-  event?.preventDefault?.();
-  event?.stopPropagation?.();
-  state.profiles[id] = { ...state.profiles[id], status, busySince: status === "busy" ? Date.now() : 0 };
-  persist();
-  render();
-  checkBusyReminder();
+function handleHash() {
+  const hash = location.hash.slice(1);
+  if (hash.startsWith("task-")) return openTask(hash.slice(5));
+  if (hash.startsWith("view-")) return showView(hash.slice(5));
+  showView("accueil");
 }
 
 function updateAvatar(event) {
   const file = event.target.files?.[0];
-  if (!file || !state.selectedAvatarId) return;
+  if (!file || !selectedAvatar) return;
   const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    state.profiles[state.selectedAvatarId] = {
-      ...state.profiles[state.selectedAvatarId],
-      avatar: reader.result
-    };
-    persist();
-    render();
-    event.target.value = "";
-  });
+  reader.onload = () => { state.avatars[selectedAvatar] = reader.result; save(); render(); };
   reader.readAsDataURL(file);
 }
 
-function openMember(id, focusTask = "") {
-  const member = members.find((item) => item.id === id);
-  if (!member) return;
-  const profile = profileFor(member);
-  elements.memberDetails.innerHTML = `
-    <header class="member-header">
-      <span class="photo large">${profile.avatar ? `<img src="${profile.avatar}" alt="Avatar ${member.name}">` : `<span>${member.name.slice(0, 1)}</span>`}</span>
-      <div>
-        <p class="eyebrow">Espace du membre</p>
-        <h2>${member.name}</h2>
-        <p>${member.role} · ${profile.status === "busy" ? "🌙 Occupé" : "🟢 Disponible"}</p>
-      </div>
-    </header>
-    <section class="priority-strip">
-      <p class="eyebrow">🔥 Priorité actuelle</p>
-      <div>${member.priorities.length ? member.priorities.map((task) => `<button>${task}</button>`).join("") : "<span>Aucune urgence réelle.</span>"}</div>
-    </section>
-    <section class="task-list">
-      ${(focusTask ? [focusTask] : member.tasks).map((task) => `<article class="task-card"><strong>${task}</strong><p>Assigné à ${member.name}. Historique et rappels visibles.</p></article>`).join("")}
-    </section>
-  `;
-  elements.memberDialog.showModal();
-}
-
-function checkBusyReminder() {
-  const member = members.find((item) => item.id === CURRENT_USER_ID);
-  const profile = profileFor(member);
-  const shouldPrompt = profile.status === "busy" && Date.now() - (profile.busySince || 0) > BUSY_REMINDER_DELAY;
-  if (!shouldPrompt) {
-    elements.availabilityPrompt.classList.remove("is-visible");
-    elements.availabilityPrompt.innerHTML = "";
+async function enablePush() {
+  el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications iPhone, ouvrez Winess Hub dans Safari, cliquez sur Partager, puis Ajouter à l’écran d’accueil.</span>`;
+  el.iphoneHelp.classList.add("is-visible");
+  if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) return;
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI") || PUSH_API_BASE.includes("example.com")) {
+    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le site est prêt. Il reste à renseigner l’URL du backend et la clé VAPID publique.</span>`;
     return;
   }
-
-  elements.availabilityPrompt.innerHTML = `
-    <div>
-      <strong>Passer en disponible ?</strong>
-      <span>Tu es en mode occupé depuis un moment.</span>
-    </div>
-    <button type="button" data-busy-reminder="yes">Oui</button>
-    <button type="button" data-busy-reminder="later">Plus tard</button>
-  `;
-  elements.availabilityPrompt.classList.add("is-visible");
-  elements.availabilityPrompt.querySelector('[data-busy-reminder="yes"]').addEventListener("click", () => {
-    state.profiles[CURRENT_USER_ID] = { ...state.profiles[CURRENT_USER_ID], status: "available", busySince: 0 };
-    persist();
-    render();
-    checkBusyReminder();
-  });
-  elements.availabilityPrompt.querySelector('[data-busy-reminder="later"]').addEventListener("click", () => {
-    state.profiles[CURRENT_USER_ID] = { ...state.profiles[CURRENT_USER_ID], busySince: Date.now() };
-    persist();
-    checkBusyReminder();
-  });
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return;
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(VAPID_PUBLIC_KEY) });
+  await fetch(`${PUSH_API_BASE}/subscribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: "steven", subscription }) });
+  el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Notifications activées.</span>`;
 }
 
-function search() {
-  const query = elements.globalSearch.value.trim().toLowerCase();
-  if (query.length < 2) {
-    elements.spotlightResults.classList.remove("is-visible");
-    elements.spotlightResults.innerHTML = "";
-    return;
-  }
-  const memberResults = members
-    .filter((member) => `${member.name} ${member.role} ${member.tasks.join(" ")} ${member.priorities.join(" ")}`.toLowerCase().includes(query))
-    .map((member) => ({ type: "member", id: member.id, title: member.name, meta: `${member.role} · ${member.tasks.length} tâches` }));
-  const toolResults = Object.entries(tools).flatMap(([view, items]) => (
-    items
-      .filter((item) => `${item.title} ${item.meta}`.toLowerCase().includes(query))
-      .map((item) => ({ type: "view", view, title: item.title, meta: item.meta }))
-  ));
-  const results = [...memberResults, ...toolResults].slice(0, 8);
-  state.searchResults = results;
-  elements.spotlightResults.innerHTML = results.length ? results.map((result, index) => (
-    `<a href="${result.type === "member" ? `#member-${result.id}` : `#view-${result.view}`}" data-result="${index}"><strong>${result.title}</strong><span>${result.meta}</span></a>`
-  )).join("") : "<p>Aucun résultat</p>";
-  elements.spotlightResults.classList.add("is-visible");
+async function sendPush(userName, title, body, url) {
+  if (PUSH_API_BASE.includes("example.com")) return;
+  const user = members.find((member) => member.name === userName);
+  if (!user) return;
+  try {
+    await fetch(`${PUSH_API_BASE}/notify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: user.id, title, body, url }) });
+  } catch {}
 }
 
-function handleHash() {
-  const hash = location.hash.replace("#", "");
-  if (hash.startsWith("member-")) {
-    openMember(hash.replace("member-", ""));
-    return;
-  }
-  if (hash.startsWith("view-")) {
-    showView(hash.replace("view-", ""));
-    return;
-  }
-  if (hash === "accueil") showView("accueil");
+function base64ToBytes(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const raw = atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
 }
 
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
-}
+function addActivity(text) { state.activity.unshift({ time: timeNow(), text }); }
+function timeNow() { return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date()); }
+function registerServiceWorker() { if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }

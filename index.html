@@ -3,120 +3,63 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#06090F">
-    <meta name="description" content="Winess Hub, coordination terrain premium et temps réel.">
+    <meta name="theme-color" content="#06090f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=180">
-    <script type="module" src="app.js?v=180"></script>
+    <link rel="apple-touch-icon" href="assets/winess-icon.svg">
+    <link rel="stylesheet" href="styles.css?v=253">
+    <script type="module" src="app.js?v=253"></script>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#accueil" aria-label="Winess Hub">
-          <span class="brand-mark">W</span>
-          <strong>Winess Hub</strong>
-        </a>
-        <button class="sidebar-toggle" type="button" id="sidebarToggle" aria-label="Réduire ou ouvrir le menu">
-          <span></span>
-        </button>
-        <nav class="nav-list" aria-label="Sections">
-          <button class="nav-item is-active" type="button" data-view="accueil">Accueil</button>
-          <button class="nav-item" type="button" data-view="commandes">Commandes</button>
-          <button class="nav-item" type="button" data-view="livraisons">Livraisons</button>
-          <button class="nav-item" type="button" data-view="rappels">Rappels</button>
-          <button class="nav-item" type="button" data-view="stock">Stock Épicerie</button>
-          <button class="nav-item" type="button" data-view="notifications">Notifications</button>
-          <button class="nav-item" type="button" data-view="archives">Archives</button>
+        <a class="brand" href="#accueil"><span class="brand-mark">W</span><strong>Winess Hub</strong></a>
+        <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Ouvrir ou fermer le menu"><span></span></button>
+        <nav class="nav-list" aria-label="Navigation">
+          <button class="nav-item is-active" data-view="accueil" type="button">Accueil</button>
+          <button class="nav-item" data-view="mes-taches" type="button">Mes tâches <span class="nav-badge" id="myTasksBadge">0</span></button>
+          <button class="nav-item" data-view="commandes" type="button">Commandes</button>
+          <button class="nav-item" data-view="livraisons" type="button">Livraisons</button>
+          <button class="nav-item" data-view="rappels" type="button">Rappels</button>
+          <button class="nav-item" data-view="stock" type="button">Stock Épicerie</button>
+          <button class="nav-item" data-view="activite" type="button">Activité</button>
+          <button class="nav-item" data-view="archives" type="button">Archives</button>
         </nav>
       </aside>
 
       <main class="workspace">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Winess Hub</p>
-            <h1 id="viewTitle">Bonjour Steven</h1>
-            <p>Coordination terrain, priorités et rappels visibles.</p>
-          </div>
-          <label class="hub-search">
-            <span class="sr-only">Rechercher</span>
-            <input id="globalSearch" type="search" placeholder="Rechercher Azran, Azul, livraison hôtel, Steven...">
-          </label>
-          <button class="primary-action" type="button">+ Nouvelle tâche</button>
-        </header>
+        <section class="iphone-help" id="iphoneHelp" aria-live="polite"></section>
 
-        <section class="spotlight-results" id="spotlightResults" aria-live="polite"></section>
-        <section class="availability-prompt" id="availabilityPrompt" aria-live="polite"></section>
-
-        <section class="view is-active team-dashboard" data-panel="accueil" aria-label="Dashboard Winess Hub">
-          <section class="team-section direction">
-            <header class="team-section-header">
-              <div>
-                <p class="eyebrow">Direction</p>
-                <h2>Coordination / validation</h2>
-                <p>Rappels clients, anomalies, litiges et supervision.</p>
-              </div>
-            </header>
-            <div class="employee-grid" id="directionGrid"></div>
-          </section>
-
-          <section class="team-section staff">
-            <header class="team-section-header">
-              <div>
-                <p class="eyebrow">Staff</p>
-                <h2>Exécution terrain</h2>
-                <p>Commandes à préparer, stock, mises de côté, livraisons et urgences.</p>
-              </div>
-            </header>
-            <div class="employee-grid staff-grid" id="staffGrid"></div>
-          </section>
+        <section class="view is-active team-dashboard" data-panel="accueil">
+          <div class="employee-grid" id="directionGrid"></div>
+          <div class="employee-grid staff-grid" id="staffGrid"></div>
         </section>
 
-        <section class="view tool-view" data-panel="commandes">
-          <p class="eyebrow">Commandes</p>
-          <h2>Commandes magasin</h2>
-          <div class="tool-list" id="commandesList"></div>
+        <section class="view tool-view" data-panel="mes-taches">
+          <p class="eyebrow">Mes tâches</p><h2>Tâches assignées</h2>
+          <button class="push-button" id="enablePushButton" type="button">Activer les notifications iPhone</button>
+          <div class="tool-list" id="myTasksList"></div>
         </section>
 
-        <section class="view tool-view" data-panel="livraisons">
-          <p class="eyebrow">Livraisons</p>
-          <h2>Départs et préparations</h2>
-          <div class="tool-list" id="livraisonsList"></div>
-        </section>
-
-        <section class="view tool-view" data-panel="rappels">
-          <p class="eyebrow">Rappels</p>
-          <h2>À ne pas oublier</h2>
-          <div class="tool-list" id="rappelsList"></div>
-        </section>
-
-        <section class="view tool-view" data-panel="stock">
-          <p class="eyebrow">Stock Épicerie</p>
-          <h2>Disponibilités Wino</h2>
-          <div class="stock-grid" id="stockGrid"></div>
-        </section>
-
-        <section class="view tool-view" data-panel="notifications">
-          <p class="eyebrow">Notifications</p>
-          <h2>Flux équipe</h2>
-          <div class="tool-list" id="notificationsList"></div>
-        </section>
-
-        <section class="view tool-view" data-panel="archives">
-          <p class="eyebrow">Archives</p>
-          <h2>Historique sauvegardé</h2>
-          <div class="tool-list" id="archivesList"></div>
-        </section>
+        <section class="view tool-view" data-panel="commandes"><p class="eyebrow">Commandes</p><h2>Commandes magasin</h2><div class="tool-list" id="commandesList"></div></section>
+        <section class="view tool-view" data-panel="livraisons"><p class="eyebrow">Livraisons</p><h2>Départs et préparations</h2><div class="tool-list" id="livraisonsList"></div></section>
+        <section class="view tool-view" data-panel="rappels"><p class="eyebrow">Rappels</p><h2>À ne pas oublier</h2><div class="tool-list" id="rappelsList"></div></section>
+        <section class="view tool-view" data-panel="stock"><p class="eyebrow">Stock Épicerie</p><h2>Disponibilités</h2><div class="tool-list" id="stockList"></div></section>
+        <section class="view tool-view" data-panel="activite"><p class="eyebrow">Activité</p><h2>Journal de bord</h2><div class="activity-feed" id="activityList"></div></section>
+        <section class="view tool-view" data-panel="archives"><p class="eyebrow">Archives</p><h2>Tâches terminées</h2><div class="tool-list" id="archivesList"></div></section>
       </main>
     </div>
 
     <input class="avatar-upload" id="avatarUpload" type="file" accept="image/*">
 
     <dialog class="member-dialog" id="memberDialog">
-      <article class="member-sheet">
-        <button class="icon-close" id="closeDialog" type="button" aria-label="Fermer">×</button>
-        <div id="memberDetails"></div>
-      </article>
+      <article class="member-sheet"><button class="icon-close" data-close="memberDialog" type="button">×</button><div id="memberDetails"></div></article>
+    </dialog>
+
+    <dialog class="member-dialog" id="taskDialog">
+      <article class="member-sheet"><button class="icon-close" data-close="taskDialog" type="button">×</button><div id="taskDetails"></div></article>
     </dialog>
   </body>
 </html>
