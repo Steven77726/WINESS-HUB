@@ -971,6 +971,19 @@ h1 {
 }
 .urgency-item span { color: #9ca3af; font-size: 12px; }
 .workspace { padding-top: 24px; }
+.global-search { position: sticky; top: 14px; z-index: 35; width: min(680px,100%); margin: 0 auto 18px; }
+.global-search input { width: 100%; min-height: 50px; padding: 0 18px; border: 1px solid rgba(255,255,255,.09); border-radius: 18px; color: #fff; background: rgba(17,24,39,.92); box-shadow: 0 18px 40px rgba(0,0,0,.28); backdrop-filter: blur(22px); outline: none; }
+.global-search input:focus { border-color: rgba(246,183,60,.52); box-shadow: 0 0 0 3px rgba(246,183,60,.1),0 18px 40px rgba(0,0,0,.28); }
+.search-results { position: absolute; inset: calc(100% + 8px) 0 auto; display: grid; gap: 6px; max-height: 55vh; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: rgba(10,15,24,.98); box-shadow: 0 24px 60px rgba(0,0,0,.5); overflow: auto; }
+.search-results[hidden] { display: none; }
+.search-result { display: grid; gap: 3px; width: 100%; padding: 12px; border: 0; border-radius: 13px; color: #fff; text-align: left; background: rgba(255,255,255,.05); cursor: pointer; }
+.search-result span { color: var(--muted); font-size: 12px; }
+.app-toast { position: fixed; right: 22px; bottom: 22px; z-index: 250; max-width: min(360px,calc(100vw - 28px)); padding: 13px 16px; border: 1px solid rgba(34,197,94,.26); border-radius: 16px; color: #fff; background: rgba(15,42,28,.96); box-shadow: 0 20px 54px rgba(0,0,0,.48); opacity: 0; pointer-events: none; transform: translateY(12px); transition: opacity 220ms ease,transform 220ms ease; }
+.app-toast.is-visible { opacity: 1; transform: translateY(0); }
+.danger-action { border-color: rgba(239,68,68,.3) !important; color: #fecaca !important; background: rgba(239,68,68,.12) !important; }
+.archive-card { opacity: .78; }
+.quote-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border-radius: 14px; background: rgba(59,130,246,.09); }
+.quote-summary span { color: var(--muted); }
 .employee-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .staff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .employee-card { grid-template-rows: auto 1fr auto; aspect-ratio: 1 / 1; }
@@ -1084,6 +1097,7 @@ h1 {
 .task-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .task-form.single { grid-template-columns: 1fr; }
 .task-form label { display: grid; gap: 7px; color: #9ca3af; font-size: 12px; font-weight: 850; }
+.task-form .quote-field[hidden] { display: none; }
 .task-form .wide { grid-column: 1 / -1; }
 .task-form input, .task-form select, .task-form textarea { min-height: 44px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; color: #fff; background: rgba(6,9,15,.7); }
 .task-form textarea { min-height: 96px; resize: vertical; }
@@ -1094,6 +1108,9 @@ h1 {
 .task-history summary, .profile-done summary { cursor: pointer; font-weight: 900; }
 
 @media (max-width: 900px) {
+  .global-search { top: 10px; margin-bottom: 14px; }
+  .global-search input { min-height: 46px; font-size: 13px; }
+  .app-toast { right: 14px; bottom: 14px; }
   body.sidebar-collapsed .nav-badge { position: absolute; top: 3px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 10px; }
   .employee-grid, .staff-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .employee-card { min-height: 218px; aspect-ratio: auto; }
