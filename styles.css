@@ -85,6 +85,32 @@ button {
   font-weight: 950;
 }
 
+.sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 0 54px;
+  color: var(--muted);
+  font-size: 11px;
+  transition: color 220ms ease;
+}
+
+.sync-state::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  content: "";
+}
+
+.sync-state.is-online {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.sync-state.is-online::before {
+  background: var(--green);
+}
+
 .sidebar-toggle {
   position: absolute;
   top: 50%;
@@ -816,6 +842,10 @@ h1 {
   }
 
   body.sidebar-collapsed .brand strong {
+    display: none;
+  }
+
+  body.sidebar-collapsed .sync-state {
     display: none;
   }
 

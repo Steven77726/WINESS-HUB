@@ -1,6 +1,9 @@
 const STORAGE_KEY = "winess-hub:v260";
 let CURRENT_USER = localStorage.getItem("winess-hub:current-user") || "Steven";
 const TWO_HOURS = 2 * 60 * 60 * 1000;
+const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
+let supabaseClient = null;
 const PUSH_API_BASE = ["127.0.0.1", "localhost"].includes(location.hostname)
   ? "http://127.0.0.1:8787"
   : "https://winess-hub-push.example.com";
@@ -55,7 +58,8 @@ const el = {
   pushState: document.querySelector("#pushState"),
   rubricTitle: document.querySelector("#rubricTitle"),
   rubricSummary: document.querySelector("#rubricSummary"),
-  rubricList: document.querySelector("#rubricList")
+  rubricList: document.querySelector("#rubricList"),
+  syncState: document.querySelector("#syncState")
 };
 
 save();
@@ -63,6 +67,7 @@ render();
 bindGlobal();
 handleHash();
 registerServiceWorker();
+initializeSupabase();
 
 function task(id, title, missionType, assignee, createdBy, priority, due, notes, minutesAgo, status, requested = 0, available = 0) {
   return { id, title, missionType, assignee, createdBy, priority, due, notes, status: status || statusesForType(missionType)[0], requested, available, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy} — ${dateTimeNow()}`] };
@@ -105,8 +110,9 @@ function legacyMissionType(category = "") {
   return "autre";
 }
 
-function save() {
+function save(changedTask = null) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (changedTask) syncTask(changedTask);
 }
 
 function render() {
@@ -282,7 +288,7 @@ function createTask(event, assignee) {
   state.tasks.unshift(item);
   addActivity(`${CURRENT_USER} a créé ${item.title} pour ${assignee}`);
   if (missingQuantity(item)) addActivity(`⚠️ ${item.title} : manquant ${missingQuantity(item)}`);
-  save(); render(); el.taskDialog.close();
+  save(item); render(); el.taskDialog.close();
   const pushTitle = item.missionType === "livraison" ? "Nouvelle livraison" : item.priority.includes("Urgente") ? "🔥 Nouvelle tâche urgente" : "Nouvelle tâche Winess Hub";
   sendPush(assignee, pushTitle, `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`, `task:${item.id}:assigned`);
 }
@@ -295,7 +301,7 @@ function openTask(id) {
     item.history.push(`👁 Vu par ${CURRENT_USER} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a vu ${item.title}`);
     sendPush(item.createdBy, "Tâche vue", `${CURRENT_USER} a vu : ${item.title}`, `#task-${item.id}`, `task:${item.id}:seen:${memberIdForName(CURRENT_USER)}`);
-    save(); render();
+    save(item); render();
     item = state.tasks.find((task) => task.id === id);
   }
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2>${item.title}</h2><p class="assignment-line">Assigné à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
@@ -328,7 +334,7 @@ function saveTaskDetails(item) {
     addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
     sendPush(item.createdBy, "Produit manquant", `${item.title} : manquant ${missingQuantity(item)}`, `#task-${item.id}`, `task:${item.id}:missing:${missingQuantity(item)}`);
   }
-  save(); render(); el.taskDialog.close();
+  save(item); render(); el.taskDialog.close();
 }
 
 function recordStatusActivity(item, status) {
@@ -364,7 +370,7 @@ function updateStatus(value) {
   if (!item) return;
   item.status = status;
   recordStatusActivity(item, status);
-  save(); render();
+  save(item); render();
 }
 
 function remindTask(id) {
@@ -373,7 +379,7 @@ function remindTask(id) {
   const bucket = Math.floor(Date.now() / (5 * 60 * 1000));
   item.history.push(`Relance envoyée par ${CURRENT_USER} — ${dateTimeNow()}`);
   addActivity(`${CURRENT_USER} a relancé ${item.assignee} pour ${item.title}`);
-  save(); render();
+  save(item); render();
   sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} te relance : ${item.title}`, `#task-${item.id}`, `task:${item.id}:remind:${bucket}`);
 }
 
@@ -477,8 +483,94 @@ function base64ToBytes(value) {
   return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
 }
 
-function addActivity(text) { state.activity.unshift({ time: timeNow(), text }); }
+function addActivity(text) {
+  const event = { id: crypto.randomUUID?.() || `activity-${Date.now()}-${Math.random()}`, time: timeNow(), text, createdAt: Date.now() };
+  state.activity.unshift(event);
+  syncActivity(event);
+}
 function timeNow() { return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date()); }
 function dateNow() { return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date()); }
 function dateTimeNow() { return `${dateNow()} ${timeNow()}`; }
 function registerServiceWorker() { if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+
+async function initializeSupabase() {
+  try {
+    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+
+    const [{ data: remoteTasks, error: taskError }, { data: remoteActivity, error: activityError }] = await Promise.all([
+      supabaseClient.from("hub_tasks").select("id,data,updated_at").order("updated_at", { ascending: false }),
+      supabaseClient.from("hub_activity").select("id,event_time,text,created_at").order("created_at", { ascending: false }).limit(100)
+    ]);
+    if (taskError || activityError) throw taskError || activityError;
+
+    if (remoteTasks.length) {
+      state.tasks = remoteTasks.map((row) => migrateTask({ ...row.data, id: row.id }));
+    } else {
+      const { error } = await supabaseClient.from("hub_tasks").upsert(state.tasks.map(taskRow));
+      if (error) throw error;
+    }
+    if (remoteActivity.length) {
+      state.activity = remoteActivity.map((row) => ({ id: row.id, time: row.event_time, text: row.text, createdAt: new Date(row.created_at).getTime() }));
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+    setSyncState("Synchronisé", true);
+
+    supabaseClient.channel("winess-hub-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "hub_tasks" }, applyRemoteTask)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "hub_activity" }, applyRemoteActivity)
+      .subscribe((status) => setSyncState(status === "SUBSCRIBED" ? "Temps réel" : "Connexion...", status === "SUBSCRIBED"));
+  } catch (error) {
+    console.warn("Supabase indisponible, stockage local conservé.", error);
+    setSyncState("Mode local", false);
+  }
+}
+
+function taskRow(item) {
+  return { id: item.id, data: item, updated_by: memberIdForName(CURRENT_USER) };
+}
+
+async function syncTask(item) {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.from("hub_tasks").upsert(taskRow(item));
+  if (error) setSyncState("Hors ligne", false);
+}
+
+async function syncActivity(event) {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.from("hub_activity").upsert({ id: event.id, event_time: event.time, text: event.text, created_by: memberIdForName(CURRENT_USER) });
+  if (error) setSyncState("Hors ligne", false);
+}
+
+function applyRemoteTask(payload) {
+  const id = payload.old?.id || payload.new?.id;
+  if (!id) return;
+  const index = state.tasks.findIndex((item) => item.id === id);
+  if (payload.eventType === "DELETE") {
+    if (index >= 0) state.tasks.splice(index, 1);
+  } else {
+    const item = migrateTask({ ...payload.new.data, id });
+    if (index >= 0) state.tasks[index] = item;
+    else state.tasks.unshift(item);
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  render();
+}
+
+function applyRemoteActivity(payload) {
+  const row = payload.new;
+  if (!row?.id || state.activity.some((event) => event.id === row.id)) return;
+  state.activity.unshift({ id: row.id, time: row.event_time, text: row.text, createdAt: new Date(row.created_at).getTime() });
+  state.activity = state.activity.slice(0, 100);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderActivity();
+}
+
+function setSyncState(label, online) {
+  if (!el.syncState) return;
+  el.syncState.textContent = label;
+  el.syncState.classList.toggle("is-online", online);
+}
