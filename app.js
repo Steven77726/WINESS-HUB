@@ -1,8 +1,10 @@
 const STORAGE_KEY = "winess-hub:v260";
-const CURRENT_USER = "Steven";
+let CURRENT_USER = localStorage.getItem("winess-hub:current-user") || "Steven";
 const TWO_HOURS = 2 * 60 * 60 * 1000;
-const PUSH_API_BASE = "https://winess-hub-push.example.com";
-const VAPID_PUBLIC_KEY = "REMPLACE_MOI_PAR_LA_CLE_VAPID_PUBLIQUE";
+const PUSH_API_BASE = ["127.0.0.1", "localhost"].includes(location.hostname)
+  ? "http://127.0.0.1:8787"
+  : "https://winess-hub-push.example.com";
+const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oLQbSHscM8_OVkHTkjrBVW2-m0RTBrWqrAw";
 
 const MISSION_TYPES = {
   preparation: { label: "📦 Préparation commande", statuses: ["Attribué", "En cours", "Prête", "Récupérée", "Terminée"] },
@@ -19,7 +21,7 @@ const MISSION_TYPES = {
 const members = [
   { id: "david", name: "David", role: "Direction", group: "direction" },
   { id: "valerie", name: "Valérie", role: "Direction", group: "direction" },
-  { id: "zac", name: "Zac", role: "Direction", group: "direction" },
+  { id: "zacharie", name: "Zac", role: "Direction", group: "direction" },
   { id: "steven", name: "Steven", role: "Staff", group: "staff" },
   { id: "theo", name: "Théo", role: "Staff", group: "staff" }
 ];
@@ -55,7 +57,9 @@ const el = {
   taskDialog: document.querySelector("#taskDialog"),
   taskDetails: document.querySelector("#taskDetails"),
   avatarUpload: document.querySelector("#avatarUpload"),
-  iphoneHelp: document.querySelector("#iphoneHelp")
+  iphoneHelp: document.querySelector("#iphoneHelp"),
+  pushProfile: document.querySelector("#pushProfileSelect"),
+  pushState: document.querySelector("#pushState")
 };
 
 render();
@@ -163,7 +167,7 @@ function toolTask(item) {
     <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}</button>
     <p>${typeLabel(item)} · ${item.status} · par ${item.createdBy} · ${item.due}</p>
     ${missingQuantity(item) ? `<p class="missing-alert">⚠️ Manquant : ${missingQuantity(item)}</p>` : ""}
-    <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}</div>
+    <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}<button data-remind="${item.id}" type="button">Relancer</button></div>
   </article>`;
 }
 
@@ -186,6 +190,7 @@ function bindRendered() {
   document.querySelectorAll("[data-avatar]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); selectedAvatar = button.dataset.avatar; el.avatarUpload.click(); }));
   document.querySelectorAll("[data-member]").forEach((card) => card.addEventListener("click", () => openMember(card.dataset.member)));
   document.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => updateStatus(button.dataset.status)));
+  document.querySelectorAll("[data-remind]").forEach((button) => button.addEventListener("click", () => remindTask(button.dataset.remind)));
 }
 
 function openCreator(assignee) {
@@ -213,7 +218,8 @@ function createTask(event, assignee) {
   addActivity(`${CURRENT_USER} a créé ${item.title} pour ${assignee}`);
   if (missingQuantity(item)) addActivity(`⚠️ ${item.title} : manquant ${missingQuantity(item)}`);
   save(); render(); el.taskDialog.close();
-  sendPush(assignee, "Nouvelle tâche Winess Hub", `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`);
+  const pushTitle = item.missionType === "livraison" ? "Nouvelle livraison" : item.priority.includes("Urgente") ? "🔥 Nouvelle tâche urgente" : "Nouvelle tâche Winess Hub";
+  sendPush(assignee, pushTitle, `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`, `task:${item.id}:assigned`);
 }
 
 function openTask(id) {
@@ -223,6 +229,7 @@ function openTask(id) {
     item.seenBy.push({ user: CURRENT_USER, date: dateNow(), time: timeNow() });
     item.history.push(`👁 Vu par ${CURRENT_USER} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a vu ${item.title}`);
+    sendPush(item.createdBy, "Tâche vue", `${CURRENT_USER} a vu : ${item.title}`, `#task-${item.id}`, `task:${item.id}:seen:${memberIdForName(CURRENT_USER)}`);
     save(); render();
     item = state.tasks.find((task) => task.id === id);
   }
@@ -232,11 +239,12 @@ function openTask(id) {
     ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
     <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
     <section class="task-form single"><label>Notes<textarea id="taskNotes">${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}"></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}"></label></div><label>Statut<select id="taskStatus">${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></section>
-    <div class="task-form-actions"><button id="saveTask" type="button">Valider</button><button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
+    <div class="task-form-actions"><button id="saveTask" type="button">Valider</button><button id="remindTask" type="button">Relancer</button><button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
   document.querySelector("#saveTask").addEventListener("click", () => saveTaskDetails(item));
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
+  document.querySelector("#remindTask").addEventListener("click", () => remindTask(item.id));
   el.taskDialog.showModal();
 }
 
@@ -253,7 +261,7 @@ function saveTaskDetails(item) {
   if (missingQuantity(item) && missingQuantity(item) !== previousMissing) {
     item.history.push(`⚠️ Manquant signalé : ${missingQuantity(item)} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
-    sendPush(item.createdBy, "Produit manquant", `${item.title} : manquant ${missingQuantity(item)}`, `#task-${item.id}`);
+    sendPush(item.createdBy, "Produit manquant", `${item.title} : manquant ${missingQuantity(item)}`, `#task-${item.id}`, `task:${item.id}:missing:${missingQuantity(item)}`);
   }
   save(); render(); el.taskDialog.close();
 }
@@ -270,8 +278,13 @@ function recordStatusActivity(item, status) {
           : `a passé ${item.title} en ${status}`;
   item.history.push(`${status} par ${CURRENT_USER} — ${dateTimeNow()}`);
   addActivity(`${CURRENT_USER} ${wording}`);
-  if (["Prête", "Prêt départ"].includes(status)) sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`);
-  if (isCompleted(item)) sendPush(item.createdBy, "Mission terminée", `${item.title} : ${status}`, `#task-${item.id}`);
+  const eventId = `task:${item.id}:status:${status}`;
+  if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} s’occupe de : ${item.title}`, `#task-${item.id}`, eventId);
+  if (status === "Prête") sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`, eventId);
+  if (status === "Récupérée") sendPush(item.createdBy, "Commande récupérée", `${item.title} a été récupérée`, `#task-${item.id}`, eventId);
+  if (status === "Prêt départ") sendPush(item.createdBy, "Livraison prête", `${item.title} est prête au départ`, `#task-${item.id}`, eventId);
+  if (status === "Livré") sendPush(item.createdBy, "Livraison livrée", `${item.title} a été livrée`, `#task-${item.id}`, eventId);
+  if (isCompleted(item) && !["Récupérée", "Livré"].includes(status)) sendPush(item.createdBy, "Tâche terminée", `${item.title} : ${status}`, `#task-${item.id}`, eventId);
 }
 
 function shareTask(item) {
@@ -289,12 +302,24 @@ function updateStatus(value) {
   save(); render();
 }
 
+function remindTask(id) {
+  const item = state.tasks.find((task) => task.id === id);
+  if (!item) return;
+  const bucket = Math.floor(Date.now() / (5 * 60 * 1000));
+  item.history.push(`Relance envoyée par ${CURRENT_USER} — ${dateTimeNow()}`);
+  addActivity(`${CURRENT_USER} a relancé ${item.assignee} pour ${item.title}`);
+  save(); render();
+  sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} te relance : ${item.title}`, `#task-${item.id}`, `task:${item.id}:remind:${bucket}`);
+}
+
 function openMember(id) {
   const member = members.find((item) => item.id === id);
   if (!member) return;
   const tasks = state.tasks.filter((item) => item.assignee === member.name);
   el.memberDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Profil</p><h2>${member.name}</h2><p>${member.role}</p></div></header><section class="task-list"><h3>En cours</h3>${tasks.filter((item) => !isCompleted(item)).map(toolTask).join("") || `<p>Aucune tâche.</p>`}</section><details class="profile-done"><summary>Terminées</summary>${tasks.filter(isCompleted).map(toolTask).join("") || `<p>Aucune tâche terminée.</p>`}</details>`;
   el.memberDetails.querySelectorAll("[data-open-task]").forEach((button) => button.addEventListener("click", () => openTask(button.dataset.openTask)));
+  el.memberDetails.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => updateStatus(button.dataset.status)));
+  el.memberDetails.querySelectorAll("[data-remind]").forEach((button) => button.addEventListener("click", () => remindTask(button.dataset.remind)));
   el.memberDialog.showModal();
 }
 
@@ -303,6 +328,13 @@ function bindGlobal() {
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
   document.querySelector("#sidebarToggle").addEventListener("click", () => document.body.classList.toggle("sidebar-collapsed"));
   document.querySelector("#enablePushButton").addEventListener("click", enablePush);
+  el.pushProfile.value = CURRENT_USER;
+  el.pushProfile.addEventListener("change", () => {
+    CURRENT_USER = el.pushProfile.value;
+    localStorage.setItem("winess-hub:current-user", CURRENT_USER);
+    el.pushState.textContent = "Notifications non activées pour ce profil";
+    render();
+  });
   el.avatarUpload.addEventListener("change", updateAvatar);
   window.addEventListener("hashchange", handleHash);
   if (matchMedia("(max-width: 900px)").matches) document.body.classList.add("sidebar-collapsed");
@@ -332,27 +364,44 @@ function updateAvatar(event) {
 async function enablePush() {
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications iPhone, ouvrez Winess Hub dans Safari, cliquez sur Partager, puis Ajouter à l’écran d’accueil.</span>`;
   el.iphoneHelp.classList.add("is-visible");
-  if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) return;
-  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) {
+    el.pushState.textContent = "Ajoutez d’abord Winess Hub à l’écran d’accueil";
+    return;
+  }
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    el.pushState.textContent = "Notifications non supportées sur ce navigateur";
+    return;
+  }
   if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI") || PUSH_API_BASE.includes("example.com")) {
     el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le site est prêt. Il reste à renseigner l’URL du backend et la clé VAPID publique.</span>`;
+    el.pushState.textContent = "Configuration serveur nécessaire";
     return;
   }
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") return;
+  if (permission !== "granted") {
+    el.pushState.textContent = "Permission refusée";
+    return;
+  }
   const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(VAPID_PUBLIC_KEY) });
-  await fetch(`${PUSH_API_BASE}/subscribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: "steven", subscription }) });
+  const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(VAPID_PUBLIC_KEY) });
+  const response = await fetch(`${PUSH_API_BASE}/subscribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: memberIdForName(CURRENT_USER), subscription }) });
+  if (!response.ok) throw new Error("Impossible d’enregistrer l’abonnement push");
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Notifications activées.</span>`;
+  el.pushState.textContent = `Notifications activées pour ${CURRENT_USER}`;
 }
 
-async function sendPush(userName, title, body, url) {
+async function sendPush(userName, title, body, url, eventId = "") {
   if (PUSH_API_BASE.includes("example.com")) return;
   const user = members.find((member) => member.name === userName);
   if (!user) return;
   try {
-    await fetch(`${PUSH_API_BASE}/notify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: user.id, title, body, url }) });
+    const notificationUrl = url?.startsWith("#") ? `./index.html${url}` : url;
+    await fetch(`${PUSH_API_BASE}/notify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: user.id, title, body, url: notificationUrl, event_id: eventId }) });
   } catch {}
+}
+
+function memberIdForName(name) {
+  return members.find((member) => member.name === name)?.id || name.toLowerCase();
 }
 
 function base64ToBytes(value) {

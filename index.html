@@ -9,8 +9,8 @@
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/winess-icon.svg">
-    <link rel="stylesheet" href="styles.css?v=260">
-    <script type="module" src="app.js?v=260"></script>
+    <link rel="stylesheet" href="styles.css?v=270">
+    <script type="module" src="app.js?v=270"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -43,7 +43,19 @@
 
         <section class="view tool-view" data-panel="mes-taches">
           <p class="eyebrow">Mes tâches</p><h2>Tâches assignées</h2>
-          <button class="push-button" id="enablePushButton" type="button">Activer les notifications iPhone</button>
+          <section class="push-panel">
+            <label>Mon profil
+              <select id="pushProfileSelect">
+                <option value="David">David</option>
+                <option value="Valérie">Valérie</option>
+                <option value="Zac">Zacharie</option>
+                <option value="Steven">Steven</option>
+                <option value="Théo">Théo</option>
+              </select>
+            </label>
+            <button class="push-button" id="enablePushButton" type="button">Activer les notifications iPhone</button>
+            <span class="push-state" id="pushState">Notifications non activées</span>
+          </section>
           <div class="tool-list" id="myTasksList"></div>
         </section>
 

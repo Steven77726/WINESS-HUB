@@ -991,6 +991,19 @@ h1 {
   cursor: pointer;
   font-weight: 950;
 }
+.push-panel {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) auto minmax(160px, 1fr);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 22px;
+  background: rgba(17,24,39,.7);
+}
+.push-panel label { display: grid; gap: 6px; color: #9ca3af; font-size: 12px; font-weight: 850; }
+.push-panel select { min-height: 46px; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; color: #fff; background: #06090f; }
+.push-state { align-self: center; color: #9ca3af; font-size: 12px; }
 .iphone-help {
   display: none;
   gap: 6px;
@@ -1056,4 +1069,5 @@ h1 {
   .employee-card { min-height: 218px; aspect-ratio: auto; }
   .task-detail-grid, .task-form { grid-template-columns: 1fr; }
   .urgency-list { grid-template-columns: 1fr; }
+  .push-panel { grid-template-columns: 1fr; align-items: stretch; }
 }
