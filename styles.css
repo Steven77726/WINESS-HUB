@@ -917,6 +917,29 @@ h1 {
 
 .team-dashboard { display: none; gap: 24px; }
 .team-dashboard.is-active { display: grid; }
+.daily-urgencies {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: 24px;
+  background: rgba(239,68,68,.07);
+}
+.daily-urgencies h2 { margin: 0; font-size: 18px; }
+.urgency-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.urgency-item {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: 17px;
+  color: #fff;
+  background: rgba(17,24,39,.75);
+  cursor: pointer;
+  text-align: left;
+}
+.urgency-item span { color: #9ca3af; font-size: 12px; }
 .workspace { padding-top: 24px; }
 .employee-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .staff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1005,6 +1028,13 @@ h1 {
   font-weight: 850;
 }
 .task-detail-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.quantity-status { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.quantity-status article { display: grid; gap: 4px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: rgba(255,255,255,.05); }
+.quantity-status span { color: #9ca3af; font-size: 12px; }
+.quantity-status .has-missing { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.12); }
+.missing-banner, .missing-alert { color: #fecaca !important; font-weight: 900; }
+.missing-banner { padding: 12px; border: 1px solid rgba(239,68,68,.3); border-radius: 18px; background: rgba(239,68,68,.12); }
+.quantity-edit { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .task-detail-grid article, .read-status, .task-history { padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: rgba(255,255,255,.05); }
 .task-detail-grid article { display: grid; gap: 5px; }
 .task-detail-grid span, .read-status p, .task-history p { margin: 0; color: #9ca3af; font-size: 12px; }
@@ -1025,4 +1055,5 @@ h1 {
   .employee-grid, .staff-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .employee-card { min-height: 218px; aspect-ratio: auto; }
   .task-detail-grid, .task-form { grid-template-columns: 1fr; }
+  .urgency-list { grid-template-columns: 1fr; }
 }

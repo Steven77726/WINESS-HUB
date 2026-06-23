@@ -1,9 +1,20 @@
-const STORAGE_KEY = "winess-hub:v252";
+const STORAGE_KEY = "winess-hub:v260";
 const CURRENT_USER = "Steven";
-const STATUSES = ["Nouvelle", "Vue", "Prise en charge", "Terminée"];
 const TWO_HOURS = 2 * 60 * 60 * 1000;
 const PUSH_API_BASE = "https://winess-hub-push.example.com";
 const VAPID_PUBLIC_KEY = "REMPLACE_MOI_PAR_LA_CLE_VAPID_PUBLIQUE";
+
+const MISSION_TYPES = {
+  preparation: { label: "📦 Préparation commande", statuses: ["Attribué", "En cours", "Prête", "Récupérée", "Terminée"] },
+  blocage: { label: "📌 Blocage produit", statuses: ["Demandé", "Bloqué", "Récupéré"] },
+  livraison: { label: "🚚 Livraison", statuses: ["À préparer", "Prêt départ", "En livraison", "Livré"] },
+  inventaire: { label: "📊 Inventaire", statuses: ["Attribué", "En cours", "Terminé"] },
+  rappel: { label: "📞 Rappel client", statuses: ["Attribué", "Pris en charge", "Terminé"] },
+  litige: { label: "⚠️ Litige", statuses: ["Attribué", "Pris en charge", "Terminé"] },
+  fournisseur: { label: "🛒 Commande fournisseur", statuses: ["Attribué", "En cours", "Commandée", "Terminée"] },
+  instagram: { label: "📱 Relance Instagram", statuses: ["Attribué", "Pris en charge", "Terminé"] },
+  autre: { label: "📋 Autre", statuses: ["Attribué", "Pris en charge", "Terminé"] }
+};
 
 const members = [
   { id: "david", name: "David", role: "Direction", group: "direction" },
@@ -14,11 +25,11 @@ const members = [
 ];
 
 const seedTasks = [
-  task("azran", "Préparer commande Azran", "Commande", "Théo", "David", "🔥 Urgente", "Aujourd'hui 18h", "Préparer la commande magasin.", 25),
-  task("azul", "Vérifier stock Azul", "Stock", "Steven", "Zac", "🔥 Urgente", "Aujourd'hui 15h", "Contrôler le disponible réel.", 90, "Prise en charge"),
-  task("litige", "Valider litige fournisseur", "Litige", "David", "Steven", "Haute", "Aujourd'hui 16h", "Écart de prix à arbitrer.", 140),
-  task("cohen", "Rappeler Madame Cohen", "Rappel", "Zac", "Steven", "Normale", "Aujourd'hui 17h", "Client à rappeler avant 18h.", 40),
-  task("facture", "Contrôler anomalie facture", "Anomalie", "Valérie", "David", "Normale", "Demain matin", "Vérifier le montant.", 12)
+  task("azran", "Préparer commande Azran", "preparation", "Théo", "David", "🔥 Urgente", "Aujourd'hui 15h", "Préparer la commande magasin.", 25, "Attribué", 12, 10),
+  task("azul", "Vérifier stock Azul", "inventaire", "Steven", "Zac", "🔥 Urgente", "Aujourd'hui 15h", "Contrôler le disponible réel.", 90, "En cours"),
+  task("litige", "Valider litige fournisseur", "litige", "David", "Steven", "Haute", "Aujourd'hui 16h", "Écart de prix à arbitrer.", 140),
+  task("cohen", "Rappeler Madame Cohen", "rappel", "Zac", "Steven", "🔥 Urgente", "Aujourd'hui 17h", "Client à rappeler avant 18h.", 40),
+  task("facture", "Contrôler anomalie facture", "autre", "Valérie", "David", "Normale", "Demain matin", "Vérifier le montant.", 12)
 ];
 
 const sampleTools = {
@@ -34,6 +45,7 @@ let selectedAvatar = "";
 const el = {
   direction: document.querySelector("#directionGrid"),
   staff: document.querySelector("#staffGrid"),
+  urgent: document.querySelector("#urgentList"),
   myTasks: document.querySelector("#myTasksList"),
   badge: document.querySelector("#myTasksBadge"),
   activity: document.querySelector("#activityList"),
@@ -51,8 +63,8 @@ bindGlobal();
 handleHash();
 registerServiceWorker();
 
-function task(id, title, category, assignee, createdBy, priority, due, notes, minutesAgo, status = "Nouvelle") {
-  return { id, title, category, assignee, createdBy, priority, due, notes, status, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy}`] };
+function task(id, title, missionType, assignee, createdBy, priority, due, notes, minutesAgo, status, requested = 0, available = 0) {
+  return { id, title, missionType, assignee, createdBy, priority, due, notes, status: status || statusesForType(missionType)[0], requested, available, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy} — ${dateTimeNow()}`] };
 }
 
 function loadState() {
@@ -69,6 +81,7 @@ function save() {
 }
 
 function render() {
+  renderUrgencies();
   el.direction.innerHTML = members.filter((m) => m.group === "direction").map(memberCard).join("");
   el.staff.innerHTML = members.filter((m) => m.group === "staff").map(memberCard).join("");
   renderMyTasks();
@@ -78,11 +91,46 @@ function render() {
 }
 
 function activeTasksFor(name) {
-  return state.tasks.filter((item) => item.assignee === name && item.status !== "Terminée");
+  return state.tasks.filter((item) => item.assignee === name && !isCompleted(item));
 }
 
 function isOverdue(item) {
-  return !["Prise en charge", "Terminée"].includes(item.status) && Date.now() - item.createdAt > TWO_HOURS;
+  return isInitialStatus(item) && Date.now() - item.createdAt > TWO_HOURS;
+}
+
+function statusesForType(type) {
+  return (MISSION_TYPES[type] || MISSION_TYPES.autre).statuses;
+}
+
+function statusesFor(item) {
+  return statusesForType(item.missionType);
+}
+
+function isInitialStatus(item) {
+  return item.status === statusesFor(item)[0];
+}
+
+function isCompleted(item) {
+  return ["Terminée", "Terminé", "Livré", "Récupéré", "Récupérée"].includes(item.status);
+}
+
+function nextStatuses(item) {
+  const statuses = statusesFor(item);
+  const index = Math.max(0, statuses.indexOf(item.status));
+  return statuses.slice(index + 1, index + 3);
+}
+
+function typeLabel(item) {
+  return (MISSION_TYPES[item.missionType] || MISSION_TYPES.autre).label;
+}
+
+function missingQuantity(item) {
+  return Math.max(0, Number(item.requested || 0) - Number(item.available || 0));
+}
+
+function renderUrgencies() {
+  const urgent = state.tasks.filter((item) => item.priority.includes("Urgente") && !isCompleted(item));
+  el.urgent.innerHTML = urgent.slice(0, 4).map((item) => `<button class="urgency-item" data-open-task="${item.id}" type="button"><strong>🔥 ${item.title}</strong><span>${item.due} · ${item.assignee}</span></button>`).join("") || `<span class="empty-state">Aucune urgence active.</span>`;
 }
 
 function memberCard(member) {
@@ -113,8 +161,9 @@ function renderMyTasks() {
 function toolTask(item) {
   return `<article class="tool-card ${isOverdue(item) ? "red" : "gold"}">
     <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}</button>
-    <p>${item.status} · assignée par ${item.createdBy} · ${item.due}</p>
-    <div class="task-actions-row"><button data-status="${item.id}:Prise en charge" type="button">Prise en charge</button><button data-status="${item.id}:Terminée" type="button">Terminée</button></div>
+    <p>${typeLabel(item)} · ${item.status} · par ${item.createdBy} · ${item.due}</p>
+    ${missingQuantity(item) ? `<p class="missing-alert">⚠️ Manquant : ${missingQuantity(item)}</p>` : ""}
+    <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}</div>
   </article>`;
 }
 
@@ -123,7 +172,7 @@ function renderTools() {
     const target = document.querySelector(`#${name}List`);
     if (target) target.innerHTML = items.map(([title, meta]) => `<article class="tool-card gold"><strong>${title}</strong><p>${meta}</p></article>`).join("");
   });
-  el.archives.innerHTML = state.tasks.filter((item) => item.status === "Terminée").map(toolTask).join("") || `<p class="empty-state">Aucune tâche terminée.</p>`;
+  el.archives.innerHTML = state.tasks.filter(isCompleted).map(toolTask).join("") || `<p class="empty-state">Aucune tâche terminée.</p>`;
 }
 
 function renderActivity() {
@@ -143,9 +192,11 @@ function openCreator(assignee) {
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Nouvelle tâche</p><h2>Attribuer à ${assignee}</h2></div></header>
     <form class="task-form" id="taskForm">
       <label>Titre<input name="title" required placeholder="Préparer commande"></label>
-      <label>Catégorie<select name="category"><option>Commande</option><option>Livraison</option><option>Stock</option><option>Rappel</option><option>Litige</option><option>Autre</option></select></label>
+      <label>Type de mission<select name="missionType">${Object.entries(MISSION_TYPES).map(([key, type]) => `<option value="${key}">${type.label}</option>`).join("")}</select></label>
       <label>Priorité<select name="priority"><option>Normale</option><option>Haute</option><option>🔥 Urgente</option></select></label>
       <label>Date / heure<input name="due" placeholder="Aujourd'hui 18h"></label>
+      <label>Quantité demandée<input name="requested" type="number" min="0" inputmode="numeric" placeholder="12"></label>
+      <label>Disponible<input name="available" type="number" min="0" inputmode="numeric" placeholder="10"></label>
       <label class="wide">Notes<textarea name="notes" placeholder="Ajouter une note"></textarea></label>
       <button class="primary-action visible" type="submit">Créer la tâche</button>
     </form>`;
@@ -156,9 +207,11 @@ function openCreator(assignee) {
 function createTask(event, assignee) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
-  const item = { id: `task-${Date.now()}`, title: form.get("title"), category: form.get("category"), assignee, createdBy: CURRENT_USER, priority: form.get("priority"), due: form.get("due") || "À planifier", notes: form.get("notes"), status: "Nouvelle", createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} à ${timeNow()}`] };
+  const missionType = form.get("missionType");
+  const item = { id: `task-${Date.now()}`, title: form.get("title"), missionType, assignee, createdBy: CURRENT_USER, priority: form.get("priority"), due: form.get("due") || "À planifier", notes: form.get("notes"), requested: Number(form.get("requested") || 0), available: Number(form.get("available") || 0), status: statusesForType(missionType)[0], createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} — ${dateTimeNow()}`] };
   state.tasks.unshift(item);
   addActivity(`${CURRENT_USER} a créé ${item.title} pour ${assignee}`);
+  if (missingQuantity(item)) addActivity(`⚠️ ${item.title} : manquant ${missingQuantity(item)}`);
   save(); render(); el.taskDialog.close();
   sendPush(assignee, "Nouvelle tâche Winess Hub", `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`);
 }
@@ -167,23 +220,58 @@ function openTask(id) {
   let item = state.tasks.find((task) => task.id === id);
   if (!item) return;
   if (!item.seenBy.some((seen) => seen.user === CURRENT_USER)) {
-    item.seenBy.push({ user: CURRENT_USER, time: timeNow() });
-    if (item.status === "Nouvelle") item.status = "Vue";
-    item.history.push(`Vu par ${CURRENT_USER} à ${timeNow()}`);
+    item.seenBy.push({ user: CURRENT_USER, date: dateNow(), time: timeNow() });
+    item.history.push(`👁 Vu par ${CURRENT_USER} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a vu ${item.title}`);
     save(); render();
     item = state.tasks.find((task) => task.id === id);
   }
-  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${item.category}</p><h2>${item.title}</h2><p class="assignment-line">Assigné à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2>${item.title}</h2><p class="assignment-line">Assigné à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
     <section class="task-detail-grid"><article><span>Statut</span><strong>${item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date</span><strong>${item.due}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
-    <section class="read-status"><h3>Lecture</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
-    <section class="task-form single"><label>Notes<textarea id="taskNotes">${item.notes || ""}</textarea></label><label>Statut<select id="taskStatus">${STATUSES.map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></section>
+    ${item.requested || item.available ? `<section class="quantity-status"><article><span>Demandé</span><strong>${item.requested || 0}</strong></article><article><span>Disponible</span><strong>${item.available || 0}</strong></article><article class="${missingQuantity(item) ? "has-missing" : ""}"><span>Manquant</span><strong>${missingQuantity(item)}</strong></article></section>` : ""}
+    ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
+    <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
+    <section class="task-form single"><label>Notes<textarea id="taskNotes">${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}"></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}"></label></div><label>Statut<select id="taskStatus">${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></section>
     <div class="task-form-actions"><button id="saveTask" type="button">Valider</button><button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
-  document.querySelector("#saveTask").addEventListener("click", () => { item.notes = document.querySelector("#taskNotes").value; item.status = document.querySelector("#taskStatus").value; item.history.push(`Modifiée par ${CURRENT_USER} à ${timeNow()}`); addActivity(`${CURRENT_USER} a mis à jour ${item.title}`); save(); render(); el.taskDialog.close(); });
+  document.querySelector("#saveTask").addEventListener("click", () => saveTaskDetails(item));
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
   el.taskDialog.showModal();
+}
+
+function saveTaskDetails(item) {
+  const previousStatus = item.status;
+  const previousMissing = missingQuantity(item);
+  item.notes = document.querySelector("#taskNotes").value;
+  item.requested = Number(document.querySelector("#taskRequested").value || 0);
+  item.available = Number(document.querySelector("#taskAvailable").value || 0);
+  item.status = document.querySelector("#taskStatus").value;
+  item.history.push(`Modifiée par ${CURRENT_USER} — ${dateTimeNow()}`);
+
+  if (item.status !== previousStatus) recordStatusActivity(item, item.status);
+  if (missingQuantity(item) && missingQuantity(item) !== previousMissing) {
+    item.history.push(`⚠️ Manquant signalé : ${missingQuantity(item)} — ${dateTimeNow()}`);
+    addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
+    sendPush(item.createdBy, "Produit manquant", `${item.title} : manquant ${missingQuantity(item)}`, `#task-${item.id}`);
+  }
+  save(); render(); el.taskDialog.close();
+}
+
+function recordStatusActivity(item, status) {
+  const wording = ["En cours", "Pris en charge", "En livraison"].includes(status)
+    ? `a pris en charge ${item.title}`
+    : ["Prête", "Prêt départ"].includes(status)
+      ? `a indiqué ${item.title} prête`
+      : ["Récupérée", "Récupéré"].includes(status)
+        ? `a indiqué ${item.title} récupérée`
+        : ["Terminée", "Terminé", "Livré"].includes(status)
+          ? `a terminé ${item.title}`
+          : `a passé ${item.title} en ${status}`;
+  item.history.push(`${status} par ${CURRENT_USER} — ${dateTimeNow()}`);
+  addActivity(`${CURRENT_USER} ${wording}`);
+  if (["Prête", "Prêt départ"].includes(status)) sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`);
+  if (isCompleted(item)) sendPush(item.createdBy, "Mission terminée", `${item.title} : ${status}`, `#task-${item.id}`);
 }
 
 function shareTask(item) {
@@ -196,15 +284,16 @@ function updateStatus(value) {
   const [id, status] = value.split(":");
   const item = state.tasks.find((task) => task.id === id);
   if (!item) return;
-  item.status = status; item.history.push(`${status} par ${CURRENT_USER} à ${timeNow()}`); addActivity(`${CURRENT_USER} : ${item.title} → ${status}`); save(); render();
-  if (status === "Terminée") sendPush(item.createdBy, "Tâche terminée", `${CURRENT_USER} a terminé : ${item.title}`, `#task-${item.id}`);
+  item.status = status;
+  recordStatusActivity(item, status);
+  save(); render();
 }
 
 function openMember(id) {
   const member = members.find((item) => item.id === id);
   if (!member) return;
   const tasks = state.tasks.filter((item) => item.assignee === member.name);
-  el.memberDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Profil</p><h2>${member.name}</h2><p>${member.role}</p></div></header><section class="task-list"><h3>En cours</h3>${tasks.filter((item) => item.status !== "Terminée").map(toolTask).join("") || `<p>Aucune tâche.</p>`}</section><details class="profile-done"><summary>Terminées</summary>${tasks.filter((item) => item.status === "Terminée").map(toolTask).join("") || `<p>Aucune tâche terminée.</p>`}</details>`;
+  el.memberDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Profil</p><h2>${member.name}</h2><p>${member.role}</p></div></header><section class="task-list"><h3>En cours</h3>${tasks.filter((item) => !isCompleted(item)).map(toolTask).join("") || `<p>Aucune tâche.</p>`}</section><details class="profile-done"><summary>Terminées</summary>${tasks.filter(isCompleted).map(toolTask).join("") || `<p>Aucune tâche terminée.</p>`}</details>`;
   el.memberDetails.querySelectorAll("[data-open-task]").forEach((button) => button.addEventListener("click", () => openTask(button.dataset.openTask)));
   el.memberDialog.showModal();
 }
@@ -274,4 +363,6 @@ function base64ToBytes(value) {
 
 function addActivity(text) { state.activity.unshift({ time: timeNow(), text }); }
 function timeNow() { return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date()); }
+function dateNow() { return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date()); }
+function dateTimeNow() { return `${dateNow()} ${timeNow()}`; }
 function registerServiceWorker() { if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
