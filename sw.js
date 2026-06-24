@@ -1,4 +1,4 @@
-const CACHE = "winess-hub-v295";
+const CACHE = "winess-hub-v296";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./assets/winess-icon.svg"];
 
 self.addEventListener("install", (event) => {

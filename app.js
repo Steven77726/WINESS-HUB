@@ -321,7 +321,7 @@ function homeTaskRank(item) {
   if (!isCompleted(item) && item.priority?.includes("Urgente")) return 0;
   if (!isCompleted(item) && isInitialStatus(item)) return 1;
   if (!isCompleted(item)) return 2;
-  if (["Validée", "Prête"].includes(item.status)) return 3;
+  if (["Validé", "Validée", "Prête"].includes(item.status)) return 3;
   if (["Récupérée", "Récupéré"].includes(item.status)) return 4;
   if (["Livrée", "Livré"].includes(item.status)) return 5;
   return 6;
@@ -336,7 +336,8 @@ function statusesForType(type) {
 }
 
 function statusesFor(item) {
-  const statuses = statusesForType(item.missionType);
+  const statuses = [...statusesForType(item.missionType)];
+  if (!statuses.includes("Validé")) statuses.push("Validé");
   return isCompletedStatus(item.status) && !statuses.includes(item.status) ? [...statuses, item.status] : statuses;
 }
 
@@ -349,7 +350,7 @@ function isCompleted(item) {
 }
 
 function isCompletedStatus(status) {
-  return ["Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"].includes(status);
+  return ["Validé", "Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"].includes(status);
 }
 
 function isDeleted(item) {
@@ -629,7 +630,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
         ? `a récupéré "${item.title}"`
         : ["Livrée", "Livré"].includes(status)
           ? `a livré "${item.title}"`
-          : status === "Validée"
+          : ["Validé", "Validée"].includes(status)
             ? `a validé "${item.title}"`
             : ["Terminée", "Terminé"].includes(status)
               ? `a terminé "${item.title}"`
@@ -647,7 +648,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=295#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=296#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -674,7 +675,7 @@ function applyCompletionMetadata(item, previousStatus) {
   if (!isCompletedStatus(previousStatus) || !item.completedAt) item.completedAt = timestamp;
   item.completedBy = CURRENT_USER;
   item.reminderEnabled = false;
-  if (["Validée", "Prête", "Terminée", "Terminé", "Facturé"].includes(item.status)) item.validatedAt = timestamp;
+  if (["Validé", "Validée", "Prête", "Terminée", "Terminé", "Facturé"].includes(item.status)) item.validatedAt = timestamp;
   if (["Récupérée", "Récupéré"].includes(item.status)) item.retrievedAt = timestamp;
   if (["Livrée", "Livré"].includes(item.status)) item.deliveredAt = timestamp;
 }
