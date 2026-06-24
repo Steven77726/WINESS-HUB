@@ -1,6 +1,6 @@
-const CACHE = "winess-hub-v297";
+const CACHE = "winess-hub-v298";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./assets/winess-icon.svg"];
+const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./task-status.js", "./manifest.webmanifest", "./assets/winess-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));

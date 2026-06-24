@@ -1,3 +1,5 @@
+import { finalStatusKind, isCompletedStatus, normalizedStatusKey } from "./task-status.js";
+
 const STORAGE_KEY = "winess-hub:v260";
 const DEVICE_PROFILE_KEY = "winess-hub:device-profile:v1";
 const DEVICE_ID_KEY = "winess-hub:device-id";
@@ -322,9 +324,10 @@ function homeTaskRank(item) {
   if (!isCompleted(item) && item.priority?.includes("Urgente")) return 0;
   if (!isCompleted(item) && isInitialStatus(item)) return 1;
   if (!isCompleted(item)) return 2;
-  if (["Validé", "Validée", "Prête"].includes(item.status)) return 3;
-  if (["Récupérée", "Récupéré"].includes(item.status)) return 4;
-  if (["Livrée", "Livré"].includes(item.status)) return 5;
+  const finalKind = finalStatusKind(item.status);
+  if (finalKind === "validated") return 3;
+  if (finalKind === "recovered") return 4;
+  if (finalKind === "delivered") return 5;
   return 6;
 }
 
@@ -350,10 +353,6 @@ function isCompleted(item) {
   return isCompletedStatus(item.status);
 }
 
-function isCompletedStatus(status) {
-  return ["Validé", "Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"].includes(status);
-}
-
 function isDeleted(item) {
   return Boolean(item.deletedAt);
 }
@@ -373,8 +372,9 @@ function typeLabel(item) {
 }
 
 function completedStatusIcon(status) {
-  if (["Récupérée", "Récupéré", "Prête"].includes(status)) return "📦";
-  if (["Livrée", "Livré"].includes(status)) return "🚚";
+  const kind = finalStatusKind(status);
+  if (kind === "recovered" || normalizedStatusKey(status) === "prete") return "📦";
+  if (kind === "delivered") return "🚚";
   return "✅";
 }
 
@@ -623,17 +623,18 @@ function saveTaskDetails(item) {
 }
 
 function recordStatusActivity(item, status, previousStatus = "") {
+  const finalKind = finalStatusKind(status);
   const wording = ["En cours", "Pris en charge", "En livraison"].includes(status)
     ? `a pris en charge "${item.title}"`
     : ["Prête", "Prêt départ"].includes(status)
       ? `a indiqué "${item.title}" prête`
-      : ["Récupérée", "Récupéré"].includes(status)
+      : finalKind === "recovered"
         ? `a récupéré "${item.title}"`
-        : ["Livrée", "Livré"].includes(status)
+        : finalKind === "delivered"
           ? `a livré "${item.title}"`
-          : ["Validé", "Validée"].includes(status)
+          : finalKind === "validated"
             ? `a validé "${item.title}"`
-            : ["Terminée", "Terminé"].includes(status)
+            : finalKind === "completed"
               ? `a terminé "${item.title}"`
               : `a passé "${item.title}" en ${status}`;
   applyCompletionMetadata(item, previousStatus);
@@ -649,7 +650,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `${APP_BASE_URL}index.html?v=297#task-${item.id}`;
+  const url = `${APP_BASE_URL}index.html?v=298#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -676,9 +677,10 @@ function applyCompletionMetadata(item, previousStatus) {
   if (!isCompletedStatus(previousStatus) || !item.completedAt) item.completedAt = timestamp;
   item.completedBy = CURRENT_USER;
   item.reminderEnabled = false;
-  if (["Validé", "Validée", "Prête", "Terminée", "Terminé", "Facturé"].includes(item.status)) item.validatedAt = timestamp;
-  if (["Récupérée", "Récupéré"].includes(item.status)) item.retrievedAt = timestamp;
-  if (["Livrée", "Livré"].includes(item.status)) item.deliveredAt = timestamp;
+  const kind = finalStatusKind(item.status);
+  if (["validated", "completed"].includes(kind)) item.validatedAt = timestamp;
+  if (kind === "recovered") item.retrievedAt = timestamp;
+  if (kind === "delivered") item.deliveredAt = timestamp;
 }
 
 async function remindTask(id) {

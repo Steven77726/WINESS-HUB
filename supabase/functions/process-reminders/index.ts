@@ -3,7 +3,6 @@ import { adminClient, allowedRequest, corsHeaders, json } from "../_shared/http.
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
 const ONE_DAY = 24 * 60 * 60 * 1000;
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const FINAL_STATUSES = new Set(["Validé", "Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"]);
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
@@ -19,7 +18,7 @@ Deno.serve(async (request) => {
 
     for (const row of rows || []) {
       const task = row.data || {};
-      if (task.kind === "profile" || task.deletedAt || FINAL_STATUSES.has(task.status)) continue;
+      if (task.kind === "profile" || task.deletedAt || isFinalStatus(task.status)) continue;
       const mode = task.reminderMode || "none";
       const interval = mode === "4h" ? FOUR_HOURS : mode === "daily" ? ONE_DAY : 0;
       if (!interval || !task.assignee) continue;
@@ -90,6 +89,11 @@ function timestamp(value: unknown) {
 function memberId(name: unknown) {
   const normalized = String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return normalized === "zac" ? "zacharie" : normalized;
+}
+
+function isFinalStatus(status: unknown) {
+  const key = String(status || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+  return ["valide", "validee", "validated", "prete", "facture", "recupere", "recuperee", "recovered", "livre", "livree", "delivered", "termine", "terminee", "completed"].includes(key);
 }
 
 function timeParis(value: number) {
