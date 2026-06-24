@@ -6,6 +6,9 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs
 let supabaseClient = null;
 let realtimeChannel = null;
 const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()}`;
+const PUSH_API_BASE = ["127.0.0.1", "localhost"].includes(location.hostname)
+  ? "http://127.0.0.1:8787"
+  : "";
 const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oLQbSHscM8_OVkHTkjrBVW2-m0RTBrWqrAw";
 
 const MISSION_TYPES = {
@@ -417,7 +420,7 @@ function recordStatusActivity(item, status) {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=291#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=292#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -595,8 +598,8 @@ async function enablePush() {
     el.pushState.textContent = "Notifications non supportées sur ce navigateur";
     return;
   }
-  if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI") || !supabaseClient) {
-    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le site est prêt. Il reste à renseigner l’URL du backend et la clé VAPID publique.</span>`;
+  if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI") || !PUSH_API_BASE) {
+    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le backend push doit être déployé et relié à l’application.</span>`;
     el.pushState.textContent = "Configuration serveur nécessaire";
     return;
   }
@@ -607,23 +610,31 @@ async function enablePush() {
   }
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(VAPID_PUBLIC_KEY) });
-  const { error } = await supabaseClient.functions.invoke("push", { body: { action: "subscribe", user_id: memberIdForName(CURRENT_USER), subscription } });
-  if (error) throw new Error("Impossible d’enregistrer l’abonnement push");
+  const response = await callPushApi("/subscribe", { user_id: memberIdForName(CURRENT_USER), subscription });
+  if (!response.ok) throw new Error("Impossible d’enregistrer l’abonnement push");
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Notifications activées.</span>`;
   el.pushState.textContent = `Notifications activées pour ${CURRENT_USER}`;
 }
 
 async function sendPush(userName, title, body, url, eventId = "") {
-  if (!supabaseClient) return false;
+  if (!PUSH_API_BASE) return false;
   const user = members.find((member) => member.name === userName);
   if (!user) return false;
   try {
     const notificationUrl = url?.startsWith("#") ? `./index.html${url}` : url;
-    const { error } = await supabaseClient.functions.invoke("push", { body: { action: "notify", user_id: user.id, title, body, url: notificationUrl, event_id: eventId } });
-    return !error;
+    const response = await callPushApi("/notify", { user_id: user.id, title, body, url: notificationUrl, event_id: eventId });
+    return response.ok;
   } catch {
     return false;
   }
+}
+
+function callPushApi(path, body) {
+  return fetch(`${PUSH_API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
 }
 
 function memberIdForName(name) {
