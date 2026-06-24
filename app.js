@@ -6,9 +6,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs
 let supabaseClient = null;
 let realtimeChannel = null;
 const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()}`;
-const PUSH_API_BASE = ["127.0.0.1", "localhost"].includes(location.hostname)
-  ? "http://127.0.0.1:8787"
-  : "";
+const EDGE_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
 const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oLQbSHscM8_OVkHTkjrBVW2-m0RTBrWqrAw";
 
 const MISSION_TYPES = {
@@ -420,7 +418,7 @@ function recordStatusActivity(item, status) {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=292#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=293#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -588,7 +586,7 @@ function compressAvatar(file) {
 }
 
 async function enablePush() {
-  el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications iPhone, ouvrez Winess Hub dans Safari, cliquez sur Partager, puis Ajouter à l’écran d’accueil.</span>`;
+  el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications, ajoute Winess Hub à l’écran d’accueil puis ouvre l’app depuis l’icône.</span>`;
   el.iphoneHelp.classList.add("is-visible");
   if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) {
     el.pushState.textContent = "Ajoutez d’abord Winess Hub à l’écran d’accueil";
@@ -598,8 +596,8 @@ async function enablePush() {
     el.pushState.textContent = "Notifications non supportées sur ce navigateur";
     return;
   }
-  if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI") || !PUSH_API_BASE) {
-    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le backend push doit être déployé et relié à l’application.</span>`;
+  if (VAPID_PUBLIC_KEY.includes("REMPLACE_MOI")) {
+    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>La clé publique VAPID doit être configurée.</span>`;
     el.pushState.textContent = "Configuration serveur nécessaire";
     return;
   }
@@ -610,29 +608,28 @@ async function enablePush() {
   }
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(VAPID_PUBLIC_KEY) });
-  const response = await callPushApi("/subscribe", { user_id: memberIdForName(CURRENT_USER), subscription });
+  const response = await callEdgeFunction("subscribe-push", { user_id: memberIdForName(CURRENT_USER), subscription });
   if (!response.ok) throw new Error("Impossible d’enregistrer l’abonnement push");
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Notifications activées.</span>`;
   el.pushState.textContent = `Notifications activées pour ${CURRENT_USER}`;
 }
 
 async function sendPush(userName, title, body, url, eventId = "") {
-  if (!PUSH_API_BASE) return false;
   const user = members.find((member) => member.name === userName);
   if (!user) return false;
   try {
     const notificationUrl = url?.startsWith("#") ? `./index.html${url}` : url;
-    const response = await callPushApi("/notify", { user_id: user.id, title, body, url: notificationUrl, event_id: eventId });
+    const response = await callEdgeFunction("notify-push", { user_id: user.id, title, body, url: notificationUrl, event_id: eventId });
     return response.ok;
   } catch {
     return false;
   }
 }
 
-function callPushApi(path, body) {
-  return fetch(`${PUSH_API_BASE}${path}`, {
+function callEdgeFunction(functionName, body) {
+  return fetch(`${EDGE_FUNCTION_BASE}/${functionName}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, "x-client-info": "winess-hub-web" },
     body: JSON.stringify(body)
   });
 }
