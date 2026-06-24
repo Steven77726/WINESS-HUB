@@ -5,6 +5,7 @@ const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:4177",
   "http://localhost:4177",
 ]);
+const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 
 export function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "";
@@ -48,9 +49,15 @@ export function validText(value: unknown, maxLength: number): value is string {
 }
 
 export function safeTaskUrl(value: unknown) {
-  if (typeof value !== "string") return "./index.html#view-accueil";
-  if (value.startsWith("./") || value.startsWith("#") || value.startsWith("https://steven77726.github.io/WINESS-HUB/")) return value;
-  return "./index.html#view-accueil";
+  if (typeof value !== "string" || !value) return APP_BASE_URL;
+  try {
+    const source = value.startsWith("#") ? `index.html${value}` : value;
+    const candidate = new URL(source, APP_BASE_URL);
+    if (candidate.origin !== "https://steven77726.github.io" || !candidate.pathname.startsWith("/WINESS-HUB/")) return APP_BASE_URL;
+    return candidate.href;
+  } catch {
+    return APP_BASE_URL;
+  }
 }
 
 export async function eventKeyFor(eventId: unknown, userId: string, title: string, body: string) {

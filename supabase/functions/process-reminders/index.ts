@@ -2,6 +2,7 @@ import { adminClient, allowedRequest, corsHeaders, json } from "../_shared/http.
 
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
 const ONE_DAY = 24 * 60 * 60 * 1000;
+const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 const FINAL_STATUSES = new Set(["Validé", "Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"]);
 
 Deno.serve(async (request) => {
@@ -71,7 +72,7 @@ async function notify(userName: string, title: string, taskId: string, eventId: 
       user_id: memberId(userName),
       title: "Rappel Winess Hub",
       body: `Tâche non terminée : ${title}`,
-      url: `./index.html#task-${taskId}`,
+      url: `${APP_BASE_URL}index.html#task-${taskId}`,
       event_id: eventId,
     }),
   });

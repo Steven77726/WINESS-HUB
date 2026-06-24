@@ -8,6 +8,7 @@ const TWO_HOURS = 2 * 60 * 60 * 1000;
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
+const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 let supabaseClient = null;
 let realtimeChannel = null;
 const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()}`;
@@ -648,7 +649,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=296#task-${item.id}`;
+  const url = `${APP_BASE_URL}index.html?v=297#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -863,11 +864,22 @@ async function sendPush(userName, title, body, url, eventId = "") {
   const user = members.find((member) => member.name === userName);
   if (!user) return false;
   try {
-    const notificationUrl = url?.startsWith("#") ? `./index.html${url}` : url;
+    const notificationUrl = absoluteNotificationUrl(url);
     const response = await callEdgeFunction("notify-push", { user_id: user.id, title, body, url: notificationUrl, event_id: eventId });
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+function absoluteNotificationUrl(value) {
+  if (!value) return APP_BASE_URL;
+  if (value.startsWith("#")) return `${APP_BASE_URL}index.html${value}`;
+  try {
+    const candidate = new URL(value, APP_BASE_URL);
+    return candidate.origin === "https://steven77726.github.io" && candidate.pathname.startsWith("/WINESS-HUB/") ? candidate.href : APP_BASE_URL;
+  } catch {
+    return APP_BASE_URL;
   }
 }
 

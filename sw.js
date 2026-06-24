@@ -1,4 +1,5 @@
-const CACHE = "winess-hub-v296";
+const CACHE = "winess-hub-v297";
+const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./assets/winess-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -24,19 +25,31 @@ self.addEventListener("push", (event) => {
     badge: "assets/winess-icon.svg",
     tag: data.event_id || undefined,
     renotify: false,
-    data: { url: data.url || "./index.html#accueil" }
+    data: { url: safeNotificationUrl(data.url) }
   }));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || "./index.html#accueil", self.location.origin).href;
+  const targetUrl = safeNotificationUrl(event.notification.data?.url);
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
-    const existing = clients.find((client) => client.url.startsWith(self.location.origin));
+    const existing = clients.find((client) => client.url.startsWith(APP_BASE_URL));
     if (existing) {
-      await existing.navigate(targetUrl).catch(() => existing.navigate(new URL("./index.html#accueil", self.location.origin).href));
+      await existing.navigate(targetUrl).catch(() => existing.navigate(APP_BASE_URL));
       return existing.focus();
     }
-    return self.clients.openWindow(targetUrl).catch(() => self.clients.openWindow("./index.html#accueil"));
+    return self.clients.openWindow(targetUrl).catch(() => self.clients.openWindow(APP_BASE_URL));
   }));
 });
+
+function safeNotificationUrl(value) {
+  if (!value) return APP_BASE_URL;
+  try {
+    const source = String(value).startsWith("#") ? `index.html${value}` : String(value);
+    const candidate = new URL(source, APP_BASE_URL);
+    if (candidate.origin !== "https://steven77726.github.io" || !candidate.pathname.startsWith("/WINESS-HUB/")) return APP_BASE_URL;
+    return candidate.href;
+  } catch {
+    return APP_BASE_URL;
+  }
+}
