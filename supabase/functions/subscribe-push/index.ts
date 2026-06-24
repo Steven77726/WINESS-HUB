@@ -23,6 +23,7 @@ Deno.serve(async (request) => {
       updated_at: new Date().toISOString(),
     }, { onConflict: "endpoint" });
     if (error) throw error;
+    await supabase.from("hub_profiles").update({ notifications_enabled: true }).eq("id", userId);
     return json(request, { ok: true });
   } catch (error) {
     console.error("subscribe-push", error);

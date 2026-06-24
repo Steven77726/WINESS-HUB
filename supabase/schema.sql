@@ -23,6 +23,12 @@ alter table public.push_notification_events enable row level security;
 create table if not exists public.hub_tasks (
   id text primary key,
   data jsonb not null,
+  assigned_to text,
+  assigned_by text,
+  status text,
+  reminder_mode text not null default 'none',
+  reminder_enabled boolean not null default false,
+  last_reminder_at timestamptz,
   updated_by text not null default 'unknown',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -38,7 +44,15 @@ create table if not exists public.hub_activity (
 
 create table if not exists public.hub_profiles (
   id text primary key,
+  name text,
+  role text,
   avatar_url text,
+  pin_hash text,
+  last_device_id text,
+  last_pin_validation_at timestamptz,
+  notifications_enabled boolean not null default false,
+  failed_pin_attempts integer not null default 0,
+  pin_locked_until timestamptz,
   updated_by text not null default 'unknown',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -89,6 +103,15 @@ drop policy if exists "pilot_write_profiles" on public.hub_profiles;
 create policy "pilot_write_profiles" on public.hub_profiles for insert to anon, authenticated with check (true);
 drop policy if exists "pilot_update_profiles" on public.hub_profiles;
 create policy "pilot_update_profiles" on public.hub_profiles for update to anon, authenticated using (true) with check (true);
+
+insert into public.hub_profiles (id, name, role, updated_by)
+values ('david','David','Direction','system'), ('zacharie','Zac','Direction','system'), ('valerie','Valérie','Direction','system'), ('steven','Steven','Staff','system'), ('theo','Théo','Staff','system')
+on conflict (id) do update set name = excluded.name, role = excluded.role;
+
+revoke select on public.hub_profiles from anon, authenticated;
+grant select (id, name, role, avatar_url, notifications_enabled, updated_at) on public.hub_profiles to anon, authenticated;
+revoke insert, update on public.hub_profiles from anon, authenticated;
+grant update (avatar_url, updated_by) on public.hub_profiles to anon, authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('avatars', 'avatars', true, 5242880, array['image/jpeg','image/png','image/webp','image/heic','image/heif'])

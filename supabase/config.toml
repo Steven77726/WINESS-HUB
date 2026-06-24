@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.notify-push]
 verify_jwt = false
+
+[functions.profile-pin]
+verify_jwt = false
+
+[functions.process-reminders]
+verify_jwt = false

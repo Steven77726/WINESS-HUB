@@ -6,6 +6,8 @@ Winess Hub utilise uniquement Supabase Edge Functions. Aucun service Render, Rai
 
 - `subscribe-push` enregistre l'abonnement du navigateur dans `push_subscriptions`.
 - `notify-push` envoie la notification au bon profil et utilise `push_notification_events` pour eviter les doublons.
+- `profile-pin` cree ou verifie les PIN sans exposer leur hash au navigateur.
+- `process-reminders` envoie les rappels 4h et quotidiens via Supabase Cron.
 - `sw.js` affiche la notification et ouvre directement la fiche concernee.
 
 URLs de production :
@@ -65,6 +67,9 @@ npx supabase functions deploy notify-push \
   --project-ref xzcshuoelidzdlihnwme \
   --no-verify-jwt \
   --use-api
+
+npx supabase functions deploy profile-pin --project-ref xzcshuoelidzdlihnwme --no-verify-jwt --use-api
+npx supabase functions deploy process-reminders --project-ref xzcshuoelidzdlihnwme --no-verify-jwt --use-api
 ```
 
 Si un envoi echoue, consulter les journaux dans Supabase Dashboard > Edge Functions > `notify-push` > Logs.

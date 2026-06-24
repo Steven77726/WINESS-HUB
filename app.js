@@ -1,11 +1,16 @@
 const STORAGE_KEY = "winess-hub:v260";
-let CURRENT_USER = localStorage.getItem("winess-hub:current-user") || "Steven";
+const DEVICE_PROFILE_KEY = "winess-hub:device-profile:v1";
+const DEVICE_ID_KEY = "winess-hub:device-id";
+const PROFILE_VALIDITY = 30 * 24 * 60 * 60 * 1000;
+const deviceSession = readDeviceSession();
+let CURRENT_USER = deviceSession?.name || "";
 const TWO_HOURS = 2 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 let supabaseClient = null;
 let realtimeChannel = null;
 const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()}`;
+const DEVICE_ID = getDeviceId();
 const EDGE_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
 const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oLQbSHscM8_OVkHTkjrBVW2-m0RTBrWqrAw";
 
@@ -57,7 +62,7 @@ const el = {
   taskDetails: document.querySelector("#taskDetails"),
   avatarUpload: document.querySelector("#avatarUpload"),
   iphoneHelp: document.querySelector("#iphoneHelp"),
-  pushProfile: document.querySelector("#pushProfileSelect"),
+  pushProfileName: document.querySelector("#pushProfileName"),
   pushState: document.querySelector("#pushState"),
   rubricTitle: document.querySelector("#rubricTitle"),
   rubricSummary: document.querySelector("#rubricSummary"),
@@ -65,7 +70,12 @@ const el = {
   syncState: document.querySelector("#syncState"),
   globalSearch: document.querySelector("#globalSearch"),
   searchResults: document.querySelector("#searchResults"),
-  toast: document.querySelector("#appToast")
+  toast: document.querySelector("#appToast"),
+  profileGate: document.querySelector("#profileGate"),
+  profileGateContent: document.querySelector("#profileGateContent"),
+  activeProfileName: document.querySelector("#activeProfileName"),
+  activeProfileRole: document.querySelector("#activeProfileRole"),
+  activeProfileAvatar: document.querySelector("#activeProfileAvatar")
 };
 
 save();
@@ -73,10 +83,139 @@ render();
 bindGlobal();
 handleHash();
 registerServiceWorker();
-initializeSupabase();
+initializeSupabase().finally(initializeIdentity);
+
+function readDeviceSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(DEVICE_PROFILE_KEY) || "null");
+    if (!session?.name || !session?.validatedAt || Date.now() - session.validatedAt > PROFILE_VALIDITY) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID?.() || `device-${Date.now()}-${Math.random()}`;
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
+
+function initializeIdentity() {
+  const session = readDeviceSession();
+  const member = members.find((item) => item.name === session?.name && item.id === session?.userId);
+  if (!member) {
+    CURRENT_USER = "";
+    localStorage.removeItem(DEVICE_PROFILE_KEY);
+    renderIdentity();
+    showProfileChooser();
+    return;
+  }
+  CURRENT_USER = member.name;
+  renderIdentity();
+  render();
+}
+
+function renderIdentity() {
+  const member = members.find((item) => item.name === CURRENT_USER);
+  el.activeProfileName.textContent = member?.name || "Profil requis";
+  el.activeProfileRole.textContent = member?.role || "Cet appareil";
+  el.pushProfileName.textContent = member?.name || "Non identifié";
+  const avatar = member && state.avatars[member.id];
+  el.activeProfileAvatar.innerHTML = avatar ? `<img src="${avatar}" alt="">` : member?.name[0] || "?";
+}
+
+function showProfileChooser() {
+  el.profileGateContent.innerHTML = `<header><p class="eyebrow">Winess Hub</p><h1>Qui utilise cet appareil ?</h1></header>
+    <div class="profile-choice-grid">${members.map((member) => `<button data-choose-profile="${member.id}" type="button"><span>${member.name[0]}</span><strong>${member.name}</strong><small>${member.role}</small></button>`).join("")}</div>`;
+  el.profileGateContent.querySelectorAll("[data-choose-profile]").forEach((button) => button.addEventListener("click", () => showPinStep(button.dataset.chooseProfile)));
+  if (!el.profileGate.open) el.profileGate.showModal();
+}
+
+async function showPinStep(memberId) {
+  const member = members.find((item) => item.id === memberId);
+  if (!member) return;
+  el.profileGateContent.innerHTML = `<div class="profile-gate-loading">Vérification du profil...</div>`;
+  try {
+    const response = await callEdgeFunction("profile-pin", { action: "status", user_id: member.id });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Profil indisponible");
+    renderPinForm(member, result.has_pin ? "verify" : "register");
+  } catch (error) {
+    el.profileGateContent.innerHTML = `<header><h1>Connexion impossible</h1><p>${escapeHtml(error.message)}</p></header><button class="gate-secondary" id="retryProfiles" type="button">Réessayer</button>`;
+    document.querySelector("#retryProfiles").addEventListener("click", showProfileChooser);
+  }
+}
+
+function renderPinForm(member, mode) {
+  const creating = mode === "register";
+  el.profileGateContent.innerHTML = `<button class="gate-back" id="backToProfiles" type="button" aria-label="Retour">‹</button>
+    <header><p class="eyebrow">${member.role}</p><h1>${member.name}</h1><p>${creating ? "Créez votre PIN personnel" : "Saisissez votre PIN personnel"}</p></header>
+    <form class="pin-form" id="pinForm">
+      <label>PIN à 4 chiffres<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" required autofocus></label>
+      ${creating ? `<label>Confirmer le PIN<input name="confirmPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required></label>` : ""}
+      <p class="pin-error" id="pinError" aria-live="polite"></p>
+      <button class="gate-primary" type="submit">${creating ? "Créer mon PIN" : "Continuer"}</button>
+    </form>`;
+  document.querySelector("#backToProfiles").addEventListener("click", showProfileChooser);
+  document.querySelector("#pinForm").addEventListener("submit", (event) => submitPin(event, member, mode));
+}
+
+async function submitPin(event, member, mode) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const pin = String(form.get("pin") || "");
+  const errorNode = document.querySelector("#pinError");
+  if (!/^\d{4}$/.test(pin)) {
+    errorNode.textContent = "Le PIN doit contenir exactement 4 chiffres.";
+    return;
+  }
+  if (mode === "register" && pin !== form.get("confirmPin")) {
+    errorNode.textContent = "Les deux PIN ne correspondent pas.";
+    return;
+  }
+  const submit = event.currentTarget.querySelector("button[type=submit]");
+  submit.disabled = true;
+  submit.textContent = "Vérification...";
+  try {
+    const response = await callEdgeFunction("profile-pin", { action: mode, user_id: member.id, pin, device_id: DEVICE_ID });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "PIN incorrect");
+    activateProfile(member);
+  } catch (error) {
+    errorNode.textContent = error.message;
+    submit.disabled = false;
+    submit.textContent = mode === "register" ? "Créer mon PIN" : "Continuer";
+  }
+}
+
+function activateProfile(member) {
+  CURRENT_USER = member.name;
+  localStorage.setItem(DEVICE_PROFILE_KEY, JSON.stringify({ userId: member.id, name: member.name, deviceId: DEVICE_ID, validatedAt: Date.now() }));
+  localStorage.removeItem("winess-hub:current-user");
+  el.profileGate.close();
+  renderIdentity();
+  render();
+  addActivity(`${member.name} a validé son profil sur cet appareil`);
+  showToast(`Profil ${member.name} actif`);
+}
+
+function changeProfile() {
+  if (CURRENT_USER && !confirm(`Changer le profil ${CURRENT_USER} sur cet appareil ?`)) return;
+  const previous = CURRENT_USER;
+  if (previous) addActivity(`${previous} a demandé un changement de profil`);
+  localStorage.removeItem(DEVICE_PROFILE_KEY);
+  CURRENT_USER = "";
+  renderIdentity();
+  render();
+  showProfileChooser();
+}
 
 function task(id, title, missionType, assignee, createdBy, priority, due, notes, minutesAgo, status, requested = 0, available = 0) {
-  return { id, title, missionType, assignee, createdBy, priority, due, notes, status: status || statusesForType(missionType)[0], requested, available, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy} — ${dateTimeNow()}`] };
+  return { id, title, missionType, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, priority, due, notes, status: status || statusesForType(missionType)[0], requested, available, reminderMode: "none", reminderEnabled: false, lastReminderAt: null, createdAt: Date.now() - minutesAgo * 60000, seenBy: [], history: [`Créée par ${createdBy} — ${dateTimeNow()}`] };
 }
 
 function loadState() {
@@ -100,7 +239,10 @@ function migrateTask(item) {
     else if (["Terminée", "Terminé"].includes(status)) status = statuses[statuses.length - 1];
     else status = statuses[0];
   }
-  return { ...item, missionType, status, seenBy: item.seenBy || [], history: item.history || [], requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
+  const assignee = item.assignedTo || item.assignee || "Non assigné";
+  const createdBy = item.assignedBy || item.createdBy || "Inconnu";
+  const reminderMode = ["4h", "daily"].includes(item.reminderMode) ? item.reminderMode : "none";
+  return { ...item, missionType, status, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, reminderMode, reminderEnabled: reminderMode !== "none" && item.reminderEnabled !== false && !isCompletedStatus(status), lastReminderAt: item.lastReminderAt || null, seenBy: item.seenBy || [], history: item.history || [], requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
 }
 
 function legacyMissionType(category = "") {
@@ -123,6 +265,7 @@ function save(changedTask = null) {
 }
 
 function render() {
+  renderIdentity();
   renderUrgencies();
   el.direction.innerHTML = members.filter((m) => m.group === "direction").map(memberCard).join("");
   el.staff.innerHTML = members.filter((m) => m.group === "staff").map(memberCard).join("");
@@ -157,7 +300,11 @@ function isInitialStatus(item) {
 }
 
 function isCompleted(item) {
-  return ["Terminée", "Terminé", "Livré", "Récupéré", "Récupérée", "Facturé"].includes(item.status);
+  return isCompletedStatus(item.status);
+}
+
+function isCompletedStatus(status) {
+  return ["Terminée", "Terminé", "Livré", "Récupéré", "Récupérée", "Facturé"].includes(status);
 }
 
 function isDeleted(item) {
@@ -217,7 +364,7 @@ function toolTask(item) {
     <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}</button>
     <p>${typeLabel(item)} · ${item.status} · par ${item.createdBy} · ${formatDue(item)}</p>
     ${missingQuantity(item) ? `<p class="missing-alert">⚠️ Manquant : ${missingQuantity(item)}</p>` : ""}
-    <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}<button data-remind="${item.id}" type="button">Relancer</button></div>
+    <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}${item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}</div>
   </article>`;
 }
 
@@ -256,11 +403,11 @@ function rubricCard(item) {
   const media = [item.photo ? "Photo" : "", item.voice ? "Vocal" : ""].filter(Boolean).join(" · ");
   return `<article class="rubric-card ${isCompleted(item) ? "is-done" : ""}">
     <header><div><strong>${item.title}</strong><p>Assigné à ${item.assignee} par ${item.createdBy}</p></div><span class="workflow-badge">${workflowStage(item)}</span></header>
-    <div class="rubric-meta"><span>${item.status}</span><span>${item.priority}</span><span>${formatDue(item)}</span></div>
+    <div class="rubric-meta"><span>${item.status}</span><span>${item.priority}</span><span>${formatDue(item)}</span>${item.reminderEnabled ? `<span>Rappel ${reminderLabel(item.reminderMode)}</span>` : ""}</div>
     ${item.missionType === "devis" ? `<div class="quote-summary"><span>${item.client || "Client à préciser"}</span><strong>${formatAmount(item.amount)}</strong></div>` : ""}
     ${item.notes ? `<p class="rubric-notes">${item.notes}</p>` : ""}
     ${media ? `<p class="rubric-media">${media}</p>` : ""}
-    <div class="rubric-actions"><button data-remind="${item.id}" type="button">Relancer</button><button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
+    <div class="rubric-actions">${item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}<button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
   </article>`;
 }
 
@@ -271,8 +418,7 @@ function workflowStage(item) {
 }
 
 function renderActivity() {
-  const events = state.activity.length ? state.activity : [{ time: "14:01", text: "Didier a créé Commande Azran" }, { time: "14:22", text: "Steven a vu Vérifier stock Azul" }];
-  el.activity.innerHTML = events.map((event) => `<article class="activity-item"><span>${event.time}</span><p>${event.text}</p></article>`).join("");
+  el.activity.innerHTML = state.activity.map((event) => `<article class="activity-item"><span>${event.time}</span><p>${event.text}</p></article>`).join("") || `<p class="empty-state">Aucune activité enregistrée.</p>`;
 }
 
 function renderSearchResults(query) {
@@ -299,6 +445,7 @@ function bindRendered() {
 }
 
 function openCreator(assignee) {
+  if (!requireIdentity()) return;
   const defaults = defaultDeadline();
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Nouvelle tâche</p><h2>Attribuer à ${assignee}</h2></div></header>
     <form class="task-form" id="taskForm">
@@ -307,6 +454,7 @@ function openCreator(assignee) {
       <label>Priorité<select name="priority"><option>Normale</option><option>Haute</option><option>🔥 Urgente</option></select></label>
       <label>Date limite<input name="dueDate" type="date" value="${defaults.date}" required></label>
       <label>Heure limite<input name="dueTime" type="time" value="${defaults.time}" required></label>
+      <label>Rappel automatique<select name="reminderMode"><option value="none">Aucun rappel</option><option value="4h">Toutes les 4h</option><option value="daily">Quotidien</option></select></label>
       <label>Quantité demandée<input name="requested" type="number" min="0" inputmode="numeric" placeholder="12"></label>
       <label>Disponible<input name="available" type="number" min="0" inputmode="numeric" placeholder="10"></label>
       <label class="quote-field" hidden>Client<input name="client" placeholder="Nom du client"></label>
@@ -325,18 +473,21 @@ function openCreator(assignee) {
 
 function createTask(event, assignee) {
   event.preventDefault();
+  if (!requireIdentity()) return;
   const form = new FormData(event.currentTarget);
   const missionType = form.get("missionType");
-  const item = { id: `task-${Date.now()}`, title: form.get("title"), missionType, assignee, createdBy: CURRENT_USER, priority: form.get("priority"), dueDate: form.get("dueDate"), dueTime: form.get("dueTime"), due: formatDeadline(form.get("dueDate"), form.get("dueTime")), notes: form.get("notes"), requested: Number(form.get("requested") || 0), available: Number(form.get("available") || 0), client: form.get("client") || "", amount: Number(form.get("amount") || 0), quoteDate: form.get("quoteDate") || "", status: statusesForType(missionType)[0], createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} — ${dateTimeNow()}`] };
+  const reminderMode = form.get("reminderMode") || "none";
+  const item = { id: `task-${Date.now()}`, title: form.get("title"), missionType, assignee, createdBy: CURRENT_USER, assignedTo: assignee, assignedBy: CURRENT_USER, priority: form.get("priority"), dueDate: form.get("dueDate"), dueTime: form.get("dueTime"), due: formatDeadline(form.get("dueDate"), form.get("dueTime")), notes: form.get("notes"), requested: Number(form.get("requested") || 0), available: Number(form.get("available") || 0), client: form.get("client") || "", amount: Number(form.get("amount") || 0), quoteDate: form.get("quoteDate") || "", status: statusesForType(missionType)[0], reminderMode, reminderEnabled: reminderMode !== "none", lastReminderAt: null, createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} — ${dateTimeNow()}`] };
   state.tasks.unshift(item);
   addActivity(`${CURRENT_USER} a créé ${item.title} pour ${assignee}`);
   if (missingQuantity(item)) addActivity(`⚠️ ${item.title} : manquant ${missingQuantity(item)}`);
   save(item); render(); el.taskDialog.close();
   const pushTitle = item.missionType === "livraison" ? "Nouvelle livraison" : item.priority.includes("Urgente") ? "🔥 Nouvelle tâche urgente" : "Nouvelle tâche Winess Hub";
-  sendPush(assignee, pushTitle, `${CURRENT_USER} t’a assigné : ${item.title}`, `#task-${item.id}`, `task:${item.id}:assigned`);
+  sendPush(assignee, pushTitle, `${CURRENT_USER} vous a assigné une nouvelle tâche : ${item.title}`, `#task-${item.id}`, `task:${item.id}:assigned`);
 }
 
 function openTask(id) {
+  if (!requireIdentity()) return;
   let item = state.tasks.find((task) => task.id === id);
   if (!item) return;
   openedTaskId = id;
@@ -348,14 +499,16 @@ function openTask(id) {
     save(item); render();
     item = state.tasks.find((task) => task.id === id);
   }
-  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2>${item.title}</h2><p class="assignment-line">Assigné à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2>${item.title}</h2><p class="assignment-line">Mission assignée à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+    <section class="assignment-summary"><article><span>Assigné par</span><strong>${item.createdBy}</strong></article><article><span>Assigné à</span><strong>${item.assignee}</strong></article></section>
     <section class="task-detail-grid"><article><span>Statut</span><strong>${isDeleted(item) ? "Supprimée" : item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date limite</span><strong>${formatDue(item)}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
     ${item.missionType === "devis" ? `<section class="quantity-status"><article><span>Client</span><strong>${item.client || "À préciser"}</strong></article><article><span>Montant</span><strong>${formatAmount(item.amount)}</strong></article><article><span>Date du devis</span><strong>${formatDate(item.quoteDate)}</strong></article></section>` : ""}
     ${item.requested || item.available ? `<section class="quantity-status"><article><span>Demandé</span><strong>${item.requested || 0}</strong></article><article><span>Disponible</span><strong>${item.available || 0}</strong></article><article class="${missingQuantity(item) ? "has-missing" : ""}"><span>Manquant</span><strong>${missingQuantity(item)}</strong></article></section>` : ""}
     ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
     <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
-    <section class="task-form single"><label>Notes<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div><div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label></section>
-    <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${isCompleted(item) ? "" : `<button id="remindTask" type="button">Relancer</button>`}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
+    ${item.reminderEnabled ? `<section class="auto-reminder-state">Rappel auto ${reminderLabel(item.reminderMode)} activé${item.lastReminderAt ? ` · dernier envoi ${new Date(item.lastReminderAt).toLocaleString("fr-FR")}` : ""}</section>` : ""}
+    <section class="task-form single"><label>Notes<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div><div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option><option value="daily" ${item.reminderMode === "daily" ? "selected" : ""}>Quotidien</option></select></label></section>
+    <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
   document.querySelector("#saveTask")?.addEventListener("click", () => saveTaskDetails(item));
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
@@ -384,6 +537,9 @@ function saveTaskDetails(item) {
     item.quoteDate = document.querySelector("#taskQuoteDate").value;
   }
   item.status = document.querySelector("#taskStatus").value;
+  item.reminderMode = document.querySelector("#taskReminderMode")?.value || "none";
+  item.reminderEnabled = item.reminderMode !== "none" && !isCompleted(item);
+  if (!item.reminderEnabled) item.lastReminderAt = null;
   item.history.push(`Modifiée par ${CURRENT_USER} — ${dateTimeNow()}`);
 
   if (item.status !== previousStatus) recordStatusActivity(item, item.status);
@@ -407,18 +563,19 @@ function recordStatusActivity(item, status) {
           ? `a terminé ${item.title}`
           : `a passé ${item.title} en ${status}`;
   item.history.push(`${status} par ${CURRENT_USER} — ${dateTimeNow()}`);
+  if (isCompleted(item)) item.reminderEnabled = false;
   addActivity(`${CURRENT_USER} ${wording}`);
   const eventId = `task:${item.id}:status:${status}`;
-  if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} s’occupe de : ${item.title}`, `#task-${item.id}`, eventId);
+  if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} a pris en charge la tâche : ${item.title}`, `#task-${item.id}`, eventId);
   if (status === "Prête") sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`, eventId);
   if (status === "Récupérée") sendPush(item.createdBy, "Commande récupérée", `${item.title} a été récupérée`, `#task-${item.id}`, eventId);
   if (status === "Prêt départ") sendPush(item.createdBy, "Livraison prête", `${item.title} est prête au départ`, `#task-${item.id}`, eventId);
   if (status === "Livré") sendPush(item.createdBy, "Livraison livrée", `${item.title} a été livrée`, `#task-${item.id}`, eventId);
-  if (isCompleted(item) && !["Récupérée", "Livré"].includes(status)) sendPush(item.createdBy, "Tâche terminée", `${item.title} : ${status}`, `#task-${item.id}`, eventId);
+  if (isCompleted(item) && !["Récupérée", "Livré"].includes(status)) sendPush(item.createdBy, "Tâche terminée", `${CURRENT_USER} a validé la tâche : ${item.title}`, `#task-${item.id}`, eventId);
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=293#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=294#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -438,13 +595,17 @@ function updateStatus(value) {
 async function remindTask(id) {
   const item = state.tasks.find((task) => task.id === id);
   if (!item || isArchived(item)) return;
+  if (item.createdBy !== CURRENT_USER) {
+    showToast(`Seul ${item.createdBy} peut relancer cette mission`);
+    return;
+  }
   const bucket = Math.floor(Date.now() / (5 * 60 * 1000));
   const historyLine = `Relance envoyée par ${CURRENT_USER} — ${dateTimeNow()}`;
   item.history.push(historyLine);
   addActivity(`${CURRENT_USER} a relancé ${item.assignee} pour ${item.title}`);
   save(item); render();
   if (el.taskDialog.open) document.querySelector(".task-history")?.insertAdjacentHTML("beforeend", `<p>${historyLine}</p>`);
-  const pushed = await sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} te relance : ${item.title}`, `#task-${item.id}`, `task:${item.id}:remind:${bucket}`);
+  const pushed = await sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} vous a relancé pour la tâche : ${item.title}`, `#task-${item.id}`, `task:${item.id}:remind:${bucket}`);
   showToast(pushed ? `Relance envoyée à ${item.assignee}` : `Relance enregistrée pour ${item.assignee}`);
 }
 
@@ -487,13 +648,8 @@ function bindGlobal() {
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
   document.querySelector("#sidebarToggle").addEventListener("click", () => document.body.classList.toggle("sidebar-collapsed"));
   document.querySelector("#enablePushButton").addEventListener("click", enablePush);
-  el.pushProfile.value = CURRENT_USER;
-  el.pushProfile.addEventListener("change", () => {
-    CURRENT_USER = el.pushProfile.value;
-    localStorage.setItem("winess-hub:current-user", CURRENT_USER);
-    el.pushState.textContent = "Notifications non activées pour ce profil";
-    render();
-  });
+  document.querySelector("#changeProfileButton").addEventListener("click", changeProfile);
+  el.profileGate.addEventListener("cancel", (event) => event.preventDefault());
   el.avatarUpload.addEventListener("change", updateAvatar);
   el.globalSearch.addEventListener("input", () => renderSearchResults(el.globalSearch.value));
   el.globalSearch.addEventListener("keydown", (event) => { if (event.key === "Escape") { el.globalSearch.value = ""; renderSearchResults(""); } });
@@ -539,7 +695,7 @@ async function updateAvatar(event) {
       if (uploadError) throw uploadError;
       const { data } = supabaseClient.storage.from("avatars").getPublicUrl(path);
       const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
-      const { error: profileError } = await supabaseClient.from("hub_profiles").upsert({ id: selectedAvatar, avatar_url: avatarUrl, updated_by: memberIdForName(CURRENT_USER) });
+      const { error: profileError } = await supabaseClient.from("hub_profiles").update({ avatar_url: avatarUrl, updated_by: memberIdForName(CURRENT_USER) }).eq("id", selectedAvatar);
       if (profileError) throw profileError;
       state.avatars[selectedAvatar] = avatarUrl;
       broadcastChange("profile_changed", { profile: { id: selectedAvatar, avatar_url: avatarUrl } });
@@ -586,6 +742,7 @@ function compressAvatar(file) {
 }
 
 async function enablePush() {
+  if (!requireIdentity()) return;
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications, ajoute Winess Hub à l’écran d’accueil puis ouvre l’app depuis l’icône.</span>`;
   el.iphoneHelp.classList.add("is-visible");
   if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) {
@@ -649,6 +806,13 @@ function addActivity(text) {
   state.activity.unshift(event);
   syncActivity(event);
 }
+function requireIdentity() {
+  if (members.some((member) => member.name === CURRENT_USER)) return true;
+  showProfileChooser();
+  return false;
+}
+function reminderLabel(mode) { return mode === "4h" ? "4h" : mode === "daily" ? "quotidien" : "désactivé"; }
+function escapeHtml(value) { return String(value || "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character])); }
 function timeNow() { return new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date()); }
 function dateNow() { return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date()); }
 function dateTimeNow() { return `${dateNow()} ${timeNow()}`; }
@@ -740,7 +904,7 @@ async function initializeSupabase() {
 }
 
 function taskRow(item) {
-  return { id: item.id, data: item, updated_by: memberIdForName(CURRENT_USER) };
+  return { id: item.id, data: item, assigned_to: memberIdForName(item.assignee), assigned_by: memberIdForName(item.createdBy), status: item.status, reminder_mode: item.reminderMode || "none", reminder_enabled: Boolean(item.reminderEnabled), last_reminder_at: item.lastReminderAt || null, updated_by: memberIdForName(CURRENT_USER || "system") };
 }
 
 async function syncTask(item) {
@@ -752,7 +916,7 @@ async function syncTask(item) {
 
 async function syncActivity(event) {
   if (!supabaseClient) return;
-  const { error } = await supabaseClient.from("hub_activity").upsert({ id: event.id, event_time: event.time, text: event.text, created_by: memberIdForName(CURRENT_USER) });
+  const { error } = await supabaseClient.from("hub_activity").upsert({ id: event.id, event_time: event.time, text: event.text, created_by: memberIdForName(CURRENT_USER || "system") });
   if (error) setSyncState("Hors ligne", false);
   else broadcastChange("activity_added", { activity: event });
 }
