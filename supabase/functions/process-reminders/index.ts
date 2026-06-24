@@ -2,7 +2,7 @@ import { adminClient, allowedRequest, corsHeaders, json } from "../_shared/http.
 
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
 const ONE_DAY = 24 * 60 * 60 * 1000;
-const FINAL_STATUSES = new Set(["Terminée", "Terminé", "Livré", "Récupéré", "Récupérée", "Facturé"]);
+const FINAL_STATUSES = new Set(["Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"]);
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });

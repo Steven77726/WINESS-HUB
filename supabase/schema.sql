@@ -29,6 +29,10 @@ create table if not exists public.hub_tasks (
   reminder_mode text not null default 'none',
   reminder_enabled boolean not null default false,
   last_reminder_at timestamptz,
+  completed_at timestamptz,
+  validated_at timestamptz,
+  retrieved_at timestamptz,
+  delivered_at timestamptz,
   updated_by text not null default 'unknown',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

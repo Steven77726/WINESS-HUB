@@ -1019,6 +1019,13 @@ h1 {
   font-weight: 950;
 }
 .task-chip.urgent { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.16); }
+.task-chip.completed {
+  border-color: rgba(255,255,255,.07);
+  color: #9ca3af;
+  background: rgba(255,255,255,.035);
+  text-decoration: line-through;
+  opacity: .72;
+}
 .empty-chip { padding: 8px 10px; border-radius: 999px; color: #9ca3af; background: rgba(255,255,255,.05); font-size: 12px; }
 .more-chip { color: #ffd98a; background: rgba(246,183,60,.12); }
 
@@ -1152,6 +1159,8 @@ h1 {
   box-shadow: 0 18px 50px rgba(0,0,0,.25);
 }
 .rubric-card.is-done { opacity: .68; }
+.rubric-card.is-done header strong,
+.archive-card .task-title-button { color: #9ca3af; text-decoration: line-through; }
 .rubric-card header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .rubric-card header p, .rubric-notes, .rubric-media { margin: 4px 0 0; color: #9ca3af; font-size: 12px; line-height: 1.4; }
 .workflow-badge { flex: 0 0 auto; padding: 7px 9px; border-radius: 999px; color: #ffd98a; background: rgba(246,183,60,.13); font-size: 11px; font-weight: 900; }
@@ -1160,6 +1169,9 @@ h1 {
 .rubric-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rubric-actions button { min-height: 42px; border: 1px solid rgba(255,255,255,.1); border-radius: 15px; color: #fff; background: rgba(255,255,255,.06); cursor: pointer; font-weight: 850; }
 .rubric-actions .open-sheet { border-color: rgba(246,183,60,.3); color: #111827; background: #f6b73c; }
+.rubric-section { display: grid; gap: 11px; }
+.rubric-section + .rubric-section { margin-top: 12px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.07); }
+.rubric-section > h3 { margin: 0; color: #9ca3af; font-size: 12px; font-weight: 900; text-transform: uppercase; }
 
 @media (max-width: 900px) {
   .nav-list { overflow-y: auto !important; }
@@ -1333,7 +1345,28 @@ h1 {
 .assignment-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .assignment-summary article { display: grid; gap: 4px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: rgba(255,255,255,.05); }
 .assignment-summary span { color: #9ca3af; font-size: 12px; }
+.completion-dates { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.completion-dates article { display: grid; gap: 4px; padding: 12px; border: 1px solid rgba(34,197,94,.16); border-radius: 18px; background: rgba(34,197,94,.055); }
+.completion-dates span { color: #9ca3af; font-size: 12px; }
+.completion-dates strong { font-size: 13px; }
 .auto-reminder-state { padding: 12px; border: 1px solid rgba(246,183,60,.25); border-radius: 18px; color: #ffd98a; background: rgba(246,183,60,.09); font-size: 12px; font-weight: 850; }
+.title-actions { margin-top: 9px; }
+.title-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  color: #d1d5db;
+  background: rgba(255,255,255,.05);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+.title-editor { padding: 12px; border: 1px solid rgba(246,183,60,.2); border-radius: 18px; background: rgba(246,183,60,.06); }
+.title-editor[hidden] { display: none; }
+.title-editor label { display: grid; gap: 7px; color: #9ca3af; font-size: 12px; font-weight: 850; }
+.title-editor input { min-height: 46px; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; color: #fff; background: #06090f; outline: none; }
+.title-editor input:focus { border-color: rgba(246,183,60,.5); box-shadow: 0 0 0 3px rgba(246,183,60,.09); }
 
 body.sidebar-collapsed .active-profile-card { grid-template-columns: 38px; justify-content: center; padding: 8px 0; }
 body.sidebar-collapsed .active-profile-card > span:nth-child(2),
@@ -1343,4 +1376,5 @@ body.sidebar-collapsed .active-profile-card button { display: none; }
   .profile-gate-sheet { width: min(430px, calc(100% - 28px)); }
   .profile-choice-grid button { min-height: 112px; border-radius: 21px; }
   .assignment-summary { grid-template-columns: 1fr; }
+  .completion-dates { grid-template-columns: 1fr; }
 }

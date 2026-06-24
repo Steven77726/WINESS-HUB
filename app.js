@@ -5,6 +5,7 @@ const PROFILE_VALIDITY = 30 * 24 * 60 * 60 * 1000;
 const deviceSession = readDeviceSession();
 let CURRENT_USER = deviceSession?.name || "";
 const TWO_HOURS = 2 * 60 * 60 * 1000;
+const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 let supabaseClient = null;
@@ -47,6 +48,7 @@ const state = loadState();
 let selectedAvatar = "";
 let openedTaskId = "";
 let toastTimer = 0;
+let homeExpiryTimer = 0;
 
 const el = {
   direction: document.querySelector("#directionGrid"),
@@ -229,11 +231,11 @@ function loadState() {
   }
 }
 
-function migrateTask(item) {
+function migrateTask(item, databaseUpdatedAt = null) {
   const missionType = item.missionType || legacyMissionType(item.category);
   const statuses = statusesForType(missionType);
   let status = item.status;
-  if (!statuses.includes(status)) {
+  if (!statuses.includes(status) && !isCompletedStatus(status)) {
     if (["Nouvelle", "Vue", "Attribué"].includes(status)) status = statuses[0];
     else if (["Prise en charge", "Pris en charge", "En cours"].includes(status)) status = statuses.includes("En cours") ? "En cours" : statuses.includes("Pris en charge") ? "Pris en charge" : statuses[1];
     else if (["Terminée", "Terminé"].includes(status)) status = statuses[statuses.length - 1];
@@ -242,7 +244,8 @@ function migrateTask(item) {
   const assignee = item.assignedTo || item.assignee || "Non assigné";
   const createdBy = item.assignedBy || item.createdBy || "Inconnu";
   const reminderMode = ["4h", "daily"].includes(item.reminderMode) ? item.reminderMode : "none";
-  return { ...item, missionType, status, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, reminderMode, reminderEnabled: reminderMode !== "none" && item.reminderEnabled !== false && !isCompletedStatus(status), lastReminderAt: item.lastReminderAt || null, seenBy: item.seenBy || [], history: item.history || [], requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
+  const completedAt = item.completedAt || (isCompletedStatus(status) ? databaseUpdatedAt || item.updatedAt || new Date(item.createdAt || Date.now()).toISOString() : null);
+  return { ...item, missionType, status, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, completedAt, reminderMode, reminderEnabled: reminderMode !== "none" && item.reminderEnabled !== false && !isCompletedStatus(status), lastReminderAt: item.lastReminderAt || null, seenBy: item.seenBy || [], history: item.history || [], requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
 }
 
 function legacyMissionType(category = "") {
@@ -276,11 +279,52 @@ function render() {
   const currentRubric = location.hash.match(/^#view-rubrique-(.+)$/)?.[1];
   if (currentRubric) renderRubric(currentRubric);
   if (el.globalSearch?.value.trim()) renderSearchResults(el.globalSearch.value);
+  scheduleHomeExpiry();
   bindRendered();
+}
+
+function scheduleHomeExpiry() {
+  clearTimeout(homeExpiryTimer);
+  const remaining = state.tasks
+    .filter(isRecentlyCompleted)
+    .map((item) => SEVEN_DAYS - (Date.now() - new Date(item.completedAt).getTime()))
+    .filter((delay) => delay > 0);
+  if (!remaining.length) return;
+  homeExpiryTimer = window.setTimeout(render, Math.min(...remaining) + 1000);
 }
 
 function activeTasksFor(name) {
   return state.tasks.filter((item) => item.assignee === name && !isArchived(item));
+}
+
+function homeTasksFor(name) {
+  return state.tasks
+    .filter((item) => item.assignee === name && !isDeleted(item) && (!isCompleted(item) || isRecentlyCompleted(item)))
+    .sort(compareHomeTasks);
+}
+
+function isRecentlyCompleted(item) {
+  if (!isCompleted(item)) return false;
+  const completedAt = new Date(item.completedAt || 0).getTime();
+  return completedAt > 0 && Date.now() - completedAt <= SEVEN_DAYS;
+}
+
+function compareHomeTasks(left, right) {
+  const rankDifference = homeTaskRank(left) - homeTaskRank(right);
+  if (rankDifference) return rankDifference;
+  const leftTime = isCompleted(left) ? new Date(left.completedAt || 0).getTime() : Number(left.createdAt || 0);
+  const rightTime = isCompleted(right) ? new Date(right.completedAt || 0).getTime() : Number(right.createdAt || 0);
+  return rightTime - leftTime;
+}
+
+function homeTaskRank(item) {
+  if (!isCompleted(item) && item.priority?.includes("Urgente")) return 0;
+  if (!isCompleted(item) && isInitialStatus(item)) return 1;
+  if (!isCompleted(item)) return 2;
+  if (["Validée", "Prête"].includes(item.status)) return 3;
+  if (["Récupérée", "Récupéré"].includes(item.status)) return 4;
+  if (["Livrée", "Livré"].includes(item.status)) return 5;
+  return 6;
 }
 
 function isOverdue(item) {
@@ -292,7 +336,8 @@ function statusesForType(type) {
 }
 
 function statusesFor(item) {
-  return statusesForType(item.missionType);
+  const statuses = statusesForType(item.missionType);
+  return isCompletedStatus(item.status) && !statuses.includes(item.status) ? [...statuses, item.status] : statuses;
 }
 
 function isInitialStatus(item) {
@@ -304,7 +349,7 @@ function isCompleted(item) {
 }
 
 function isCompletedStatus(status) {
-  return ["Terminée", "Terminé", "Livré", "Récupéré", "Récupérée", "Facturé"].includes(status);
+  return ["Validée", "Prête", "Terminée", "Terminé", "Livré", "Livrée", "Récupéré", "Récupérée", "Facturé"].includes(status);
 }
 
 function isDeleted(item) {
@@ -325,6 +370,12 @@ function typeLabel(item) {
   return (MISSION_TYPES[item.missionType] || MISSION_TYPES.autre).label;
 }
 
+function completedStatusIcon(status) {
+  if (["Récupérée", "Récupéré", "Prête"].includes(status)) return "📦";
+  if (["Livrée", "Livré"].includes(status)) return "🚚";
+  return "✅";
+}
+
 function missingQuantity(item) {
   return Math.max(0, Number(item.requested || 0) - Number(item.available || 0));
 }
@@ -335,18 +386,19 @@ function renderUrgencies() {
 }
 
 function memberCard(member) {
-  const tasks = activeTasksFor(member.name);
+  const activeTasks = activeTasksFor(member.name);
+  const tasks = homeTasksFor(member.name);
   const avatar = state.avatars[member.id];
   return `<article class="employee-card ${member.group}" data-member="${member.id}">
     <div class="employee-top">
       <button class="photo" data-avatar="${member.id}" type="button" aria-label="Changer la photo de ${member.name}">
         ${avatar ? `<img src="${avatar}" alt="${member.name}">` : `<span>${member.name[0]}</span>`}
-        ${tasks.length ? `<span class="task-badge">${tasks.length}</span>` : ""}
+        ${activeTasks.length ? `<span class="task-badge">${activeTasks.length}</span>` : ""}
       </button>
       <button class="profile-plus" data-add-task="${member.name}" type="button">+</button>
     </div>
     <div class="employee-tags">
-      ${tasks.slice(0, 3).map((item) => `<button class="task-chip ${isOverdue(item) || item.priority.includes("Urgente") ? "urgent" : ""}" data-open-task="${item.id}" type="button">${isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : ""}${item.title}</button>`).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
+      ${tasks.slice(0, 3).map((item) => `<button class="task-chip ${isCompleted(item) ? "completed" : isOverdue(item) || item.priority.includes("Urgente") ? "urgent" : ""}" data-open-task="${item.id}" type="button">${isCompleted(item) ? `${completedStatusIcon(item.status)} ${item.title} · ${item.status}` : `${isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : ""}${item.title}`}</button>`).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
       ${tasks.length > 3 ? `<button class="task-chip more-chip" data-member="${member.id}" type="button">+${tasks.length - 3} autres</button>` : ""}
     </div>
     <div class="employee-bottom"><div><h3>${member.name}</h3><p>${member.role}</p></div></div>
@@ -392,11 +444,12 @@ function renderRubricCounts() {
 
 function renderRubric(key) {
   const type = MISSION_TYPES[key] || MISSION_TYPES.autre;
-  const tasks = state.tasks.filter((item) => item.missionType === key && !isArchived(item)).sort((a, b) => b.createdAt - a.createdAt);
-  const active = tasks.length;
+  const tasks = state.tasks.filter((item) => item.missionType === key && !isDeleted(item));
+  const activeTasks = tasks.filter((item) => !isCompleted(item)).sort((a, b) => b.createdAt - a.createdAt);
+  const archivedTasks = tasks.filter(isCompleted).sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
   el.rubricTitle.textContent = type.label;
-  el.rubricSummary.innerHTML = `<span>${active} active${active > 1 ? "s" : ""}</span>`;
-  el.rubricList.innerHTML = tasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche dans cette rubrique.</p>`;
+  el.rubricSummary.innerHTML = `<span>${activeTasks.length} en cours</span><span>${archivedTasks.length} archivée${archivedTasks.length > 1 ? "s" : ""}</span>`;
+  el.rubricList.innerHTML = `<section class="rubric-section"><h3>En cours</h3>${activeTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche en cours.</p>`}</section><section class="rubric-section"><h3>Archivées</h3>${archivedTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche archivée.</p>`}</section>`;
 }
 
 function rubricCard(item) {
@@ -407,7 +460,7 @@ function rubricCard(item) {
     ${item.missionType === "devis" ? `<div class="quote-summary"><span>${item.client || "Client à préciser"}</span><strong>${formatAmount(item.amount)}</strong></div>` : ""}
     ${item.notes ? `<p class="rubric-notes">${item.notes}</p>` : ""}
     ${media ? `<p class="rubric-media">${media}</p>` : ""}
-    <div class="rubric-actions">${item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}<button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
+    <div class="rubric-actions">${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}<button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
   </article>`;
 }
 
@@ -499,9 +552,11 @@ function openTask(id) {
     save(item); render();
     item = state.tasks.find((task) => task.id === id);
   }
-  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2>${item.title}</h2><p class="assignment-line">Mission assignée à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2 id="taskTitleDisplay">${escapeHtml(item.title)}</h2><div class="title-actions">${isDeleted(item) ? "" : `<button id="editTaskTitle" type="button">✏️ Modifier le titre</button>`}</div><p class="assignment-line">Mission assignée à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
+    <section class="title-editor" id="taskTitleEditor" hidden><label>Nouveau titre<input id="taskTitleInput" value="${escapeHtml(item.title)}" maxlength="160"></label></section>
     <section class="assignment-summary"><article><span>Assigné par</span><strong>${item.createdBy}</strong></article><article><span>Assigné à</span><strong>${item.assignee}</strong></article></section>
     <section class="task-detail-grid"><article><span>Statut</span><strong>${isDeleted(item) ? "Supprimée" : item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date limite</span><strong>${formatDue(item)}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
+    ${completionDatesMarkup(item)}
     ${item.missionType === "devis" ? `<section class="quantity-status"><article><span>Client</span><strong>${item.client || "À préciser"}</strong></article><article><span>Montant</span><strong>${formatAmount(item.amount)}</strong></article><article><span>Date du devis</span><strong>${formatDate(item.quoteDate)}</strong></article></section>` : ""}
     ${item.requested || item.available ? `<section class="quantity-status"><article><span>Demandé</span><strong>${item.requested || 0}</strong></article><article><span>Disponible</span><strong>${item.available || 0}</strong></article><article class="${missingQuantity(item) ? "has-missing" : ""}"><span>Manquant</span><strong>${missingQuantity(item)}</strong></article></section>` : ""}
     ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
@@ -511,6 +566,11 @@ function openTask(id) {
     <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
   document.querySelector("#saveTask")?.addEventListener("click", () => saveTaskDetails(item));
+  document.querySelector("#editTaskTitle")?.addEventListener("click", () => {
+    const editor = document.querySelector("#taskTitleEditor");
+    editor.hidden = false;
+    document.querySelector("#taskTitleInput").focus();
+  });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
   document.querySelector("#remindTask")?.addEventListener("click", () => remindTask(item.id));
@@ -521,6 +581,9 @@ function openTask(id) {
 function saveTaskDetails(item) {
   const previousStatus = item.status;
   const previousMissing = missingQuantity(item);
+  const previousTitle = item.title;
+  const nextTitle = document.querySelector("#taskTitleInput")?.value.trim();
+  if (nextTitle) item.title = nextTitle;
   item.notes = document.querySelector("#taskNotes").value;
   const dueDate = document.querySelector("#taskDueDate").value;
   const dueTime = document.querySelector("#taskDueTime").value;
@@ -540,9 +603,14 @@ function saveTaskDetails(item) {
   item.reminderMode = document.querySelector("#taskReminderMode")?.value || "none";
   item.reminderEnabled = item.reminderMode !== "none" && !isCompleted(item);
   if (!item.reminderEnabled) item.lastReminderAt = null;
-  item.history.push(`Modifiée par ${CURRENT_USER} — ${dateTimeNow()}`);
+  if (item.title !== previousTitle) {
+    item.history.push(`${CURRENT_USER} a modifié le titre : "${previousTitle}" → "${item.title}" — ${dateTimeNow()}`);
+    addActivity(`${CURRENT_USER} a modifié le titre : ${previousTitle} → ${item.title}`);
+  } else {
+    item.history.push(`Modifiée par ${CURRENT_USER} — ${dateTimeNow()}`);
+  }
 
-  if (item.status !== previousStatus) recordStatusActivity(item, item.status);
+  if (item.status !== previousStatus) recordStatusActivity(item, item.status, previousStatus);
   if (missingQuantity(item) && missingQuantity(item) !== previousMissing) {
     item.history.push(`⚠️ Manquant signalé : ${missingQuantity(item)} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
@@ -552,18 +620,22 @@ function saveTaskDetails(item) {
   showToast(isCompleted(item) ? "Tâche déplacée dans les archives" : "Modifications enregistrées");
 }
 
-function recordStatusActivity(item, status) {
+function recordStatusActivity(item, status, previousStatus = "") {
   const wording = ["En cours", "Pris en charge", "En livraison"].includes(status)
-    ? `a pris en charge ${item.title}`
+    ? `a pris en charge "${item.title}"`
     : ["Prête", "Prêt départ"].includes(status)
-      ? `a indiqué ${item.title} prête`
+      ? `a indiqué "${item.title}" prête`
       : ["Récupérée", "Récupéré"].includes(status)
-        ? `a indiqué ${item.title} récupérée`
-        : ["Terminée", "Terminé", "Livré"].includes(status)
-          ? `a terminé ${item.title}`
-          : `a passé ${item.title} en ${status}`;
+        ? `a récupéré "${item.title}"`
+        : ["Livrée", "Livré"].includes(status)
+          ? `a livré "${item.title}"`
+          : status === "Validée"
+            ? `a validé "${item.title}"`
+            : ["Terminée", "Terminé"].includes(status)
+              ? `a terminé "${item.title}"`
+              : `a passé "${item.title}" en ${status}`;
+  applyCompletionMetadata(item, previousStatus);
   item.history.push(`${status} par ${CURRENT_USER} — ${dateTimeNow()}`);
-  if (isCompleted(item)) item.reminderEnabled = false;
   addActivity(`${CURRENT_USER} ${wording}`);
   const eventId = `task:${item.id}:status:${status}`;
   if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} a pris en charge la tâche : ${item.title}`, `#task-${item.id}`, eventId);
@@ -575,7 +647,7 @@ function recordStatusActivity(item, status) {
 }
 
 function shareTask(item) {
-  const url = `https://steven77726.github.io/WINESS-HUB/?v=294#task-${item.id}`;
+  const url = `https://steven77726.github.io/WINESS-HUB/?v=295#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -586,10 +658,25 @@ function updateStatus(value) {
   const [id, status] = value.split(":");
   const item = state.tasks.find((task) => task.id === id);
   if (!item) return;
+  const previousStatus = item.status;
   item.status = status;
-  recordStatusActivity(item, status);
+  recordStatusActivity(item, status, previousStatus);
   save(item); render();
   showToast(isCompleted(item) ? "Tâche déplacée dans les archives" : `Statut : ${status}`);
+}
+
+function applyCompletionMetadata(item, previousStatus) {
+  if (!isCompleted(item)) {
+    if (isCompletedStatus(previousStatus)) item.completedAt = null;
+    return;
+  }
+  const timestamp = new Date().toISOString();
+  if (!isCompletedStatus(previousStatus) || !item.completedAt) item.completedAt = timestamp;
+  item.completedBy = CURRENT_USER;
+  item.reminderEnabled = false;
+  if (["Validée", "Prête", "Terminée", "Terminé", "Facturé"].includes(item.status)) item.validatedAt = timestamp;
+  if (["Récupérée", "Récupéré"].includes(item.status)) item.retrievedAt = timestamp;
+  if (["Livrée", "Livré"].includes(item.status)) item.deliveredAt = timestamp;
 }
 
 async function remindTask(id) {
@@ -845,6 +932,17 @@ function formatAmount(value) {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 }
 
+function completionDatesMarkup(item) {
+  const dates = [
+    ["Validation", item.validatedAt],
+    ["Récupération", item.retrievedAt],
+    ["Livraison", item.deliveredAt],
+    ["Finalisation", item.completedAt]
+  ].filter(([, value]) => value);
+  if (!dates.length) return "";
+  return `<section class="completion-dates">${dates.map(([label, value]) => `<article><span>${label}</span><strong>${new Date(value).toLocaleString("fr-FR")}</strong></article>`).join("")}</section>`;
+}
+
 function showToast(message) {
   if (!el.toast) return;
   clearTimeout(toastTimer);
@@ -870,7 +968,7 @@ async function initializeSupabase() {
     const fallbackProfiles = remoteTasks.filter((row) => row.data?.kind === "profile");
     const taskRows = remoteTasks.filter((row) => row.data?.kind !== "profile");
     if (taskRows.length) {
-      state.tasks = taskRows.map((row) => migrateTask({ ...row.data, id: row.id }));
+      state.tasks = taskRows.map((row) => migrateTask({ ...row.data, id: row.id }, row.updated_at));
     } else {
       const { error } = await supabaseClient.from("hub_tasks").upsert(state.tasks.map(taskRow));
       if (error) throw error;
@@ -904,7 +1002,7 @@ async function initializeSupabase() {
 }
 
 function taskRow(item) {
-  return { id: item.id, data: item, assigned_to: memberIdForName(item.assignee), assigned_by: memberIdForName(item.createdBy), status: item.status, reminder_mode: item.reminderMode || "none", reminder_enabled: Boolean(item.reminderEnabled), last_reminder_at: item.lastReminderAt || null, updated_by: memberIdForName(CURRENT_USER || "system") };
+  return { id: item.id, data: item, assigned_to: memberIdForName(item.assignee), assigned_by: memberIdForName(item.createdBy), status: item.status, reminder_mode: item.reminderMode || "none", reminder_enabled: Boolean(item.reminderEnabled), last_reminder_at: item.lastReminderAt || null, completed_at: item.completedAt || null, validated_at: item.validatedAt || null, retrieved_at: item.retrievedAt || null, delivered_at: item.deliveredAt || null, updated_by: memberIdForName(CURRENT_USER || "system") };
 }
 
 async function syncTask(item) {
@@ -961,7 +1059,7 @@ function applyRemoteTask(payload) {
   if (payload.eventType === "DELETE") {
     if (index >= 0) state.tasks.splice(index, 1);
   } else {
-    const item = migrateTask({ ...payload.new.data, id });
+    const item = migrateTask({ ...payload.new.data, id }, payload.new.updated_at);
     if (index >= 0) state.tasks[index] = item;
     else state.tasks.unshift(item);
   }
