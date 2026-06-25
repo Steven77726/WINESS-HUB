@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "301";
+const APP_VERSION = "302";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -324,8 +324,34 @@ function activeTasksFor(name) {
 
 function homeTasksFor(name) {
   return state.tasks
-    .filter((item) => item.assignee === name && !isDeleted(item) && (!isCompleted(item) || isRecentlyCompleted(item)))
+    .filter((item) => item.assignee === name && !isDeleted(item))
+    .filter((item) => {
+      if (["done", "archived"].includes(activeSearchFilter)) return isCompleted(item);
+      if (["livraison", "commandes", "inventaire", "litige"].includes(activeSearchFilter)) return true;
+      return !isCompleted(item) || isRecentlyCompleted(item);
+    })
+    .filter(matchesHomeFilter)
     .sort(compareHomeTasks);
+}
+
+function matchesHomeFilter(item) {
+  if (activeSearchFilter === "all") return true;
+  return matchesSearchFilter(item);
+}
+
+function homeEmptyLabel() {
+  const labels = {
+    all: "Aucune tâche active",
+    active: "Aucune tâche en cours",
+    done: "Aucune tâche terminée",
+    archived: "Aucune archive",
+    urgent: "Aucune urgence",
+    livraison: "Aucune livraison",
+    commandes: "Aucune commande",
+    inventaire: "Aucun inventaire",
+    litige: "Aucun litige"
+  };
+  return labels[activeSearchFilter] || "Aucune tâche";
 }
 
 function isRecentlyCompleted(item) {
@@ -422,7 +448,7 @@ function memberCard(member) {
       <button class="profile-plus" data-add-task="${member.name}" type="button">+</button>
     </div>
     <div class="employee-tags">
-      ${tasks.slice(0, 3).map(taskChip).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
+      ${tasks.slice(0, 3).map(taskChip).join("") || `<span class="empty-chip">${homeEmptyLabel()}</span>`}
       ${tasks.length > 3 ? `<button class="task-chip more-chip" data-member="${member.id}" type="button">+${tasks.length - 3} autres</button>` : ""}
     </div>
     <div class="employee-bottom"><div><h3>${member.name}</h3><p>${member.role}</p></div></div>
@@ -888,6 +914,7 @@ function bindGlobal() {
       event.stopPropagation();
       activeSearchFilter = searchFilter.dataset.searchFilter;
       el.searchFilters.querySelectorAll("[data-search-filter]").forEach((button) => button.classList.toggle("is-active", button === searchFilter));
+      render();
       renderSearchResults(el.globalSearch.value);
     }
   });
