@@ -403,11 +403,20 @@ function memberCard(member) {
       <button class="profile-plus" data-add-task="${member.name}" type="button">+</button>
     </div>
     <div class="employee-tags">
-      ${tasks.slice(0, 3).map((item) => `<button class="task-chip ${isCompleted(item) ? "completed" : isOverdue(item) || item.priority.includes("Urgente") ? "urgent" : ""}" data-open-task="${item.id}" type="button">${isCompleted(item) ? `${completedStatusIcon(item.status)} ${item.title} · ${item.status}` : `${isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : ""}${item.title}`}</button>`).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
+      ${tasks.slice(0, 3).map(taskChip).join("") || `<span class="empty-chip">Aucune tâche active</span>`}
       ${tasks.length > 3 ? `<button class="task-chip more-chip" data-member="${member.id}" type="button">+${tasks.length - 3} autres</button>` : ""}
     </div>
     <div class="employee-bottom"><div><h3>${member.name}</h3><p>${member.role}</p></div></div>
   </article>`;
+}
+
+function taskChip(item) {
+  if (isCompleted(item)) {
+    return `<button class="task-chip completed completed-${finalStatusKind(item.status) || "done"}" data-open-task="${item.id}" type="button"><span class="task-chip-title">${escapeHtml(item.title)}</span><span class="task-chip-status">${completedStatusIcon(item.status)} ${escapeHtml(item.status)}</span></button>`;
+  }
+  const prefix = isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : "";
+  const urgent = isOverdue(item) || item.priority.includes("Urgente") ? " urgent" : "";
+  return `<button class="task-chip${urgent}" data-open-task="${item.id}" type="button">${prefix}${escapeHtml(item.title)}</button>`;
 }
 
 function renderMyTasks() {
@@ -677,7 +686,7 @@ function openTask(id) {
     <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
     ${item.reminderEnabled ? `<section class="auto-reminder-state">Rappel auto ${reminderLabel(item.reminderMode)} activé${item.lastReminderAt ? ` · dernier envoi ${new Date(item.lastReminderAt).toLocaleString("fr-FR")}` : ""}</section>` : ""}
     <section class="task-form single"><label>Notes<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div><div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option><option value="daily" ${item.reminderMode === "daily" ? "selected" : ""}>Quotidien</option></select></label></section>
-    <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
+    <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) ? `<button id="validateTask" class="complete-action" type="button">✅ Valider la tâche</button>` : ""}${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
   document.querySelector("#saveTask")?.addEventListener("click", () => saveTaskDetails(item));
   document.querySelector("#editTaskTitle")?.addEventListener("click", () => {
@@ -687,9 +696,16 @@ function openTask(id) {
   });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
+  document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
   document.querySelector("#remindTask")?.addEventListener("click", () => remindTask(item.id));
   document.querySelector("#deleteTask")?.addEventListener("click", () => deleteTask(item));
   el.taskDialog.showModal();
+}
+
+function validateTask(item) {
+  const statusSelect = document.querySelector("#taskStatus");
+  if (statusSelect) statusSelect.value = "Validé";
+  saveTaskDetails(item);
 }
 
 function saveTaskDetails(item) {
@@ -762,7 +778,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `${APP_BASE_URL}index.html?v=299#task-${item.id}`;
+  const url = `${APP_BASE_URL}index.html?v=300#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");

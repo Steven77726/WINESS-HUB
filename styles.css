@@ -549,6 +549,9 @@ h1 {
 }
 
 .task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.88);
@@ -1032,11 +1035,15 @@ h1 {
   border-color: rgba(255,255,255,.07);
   color: #9ca3af;
   background: rgba(255,255,255,.035);
-  text-decoration: line-through;
   opacity: .72;
 }
+.task-chip.completed .task-chip-title { text-decoration: line-through; }
+.task-chip.completed .task-chip-status { color: rgba(34,197,94,.82); font-size: 11px; font-weight: 900; text-decoration: none; }
+.task-chip.completed-recovered .task-chip-status { color: rgba(246,183,60,.82); }
+.task-chip.completed-delivered .task-chip-status { color: rgba(59,130,246,.82); }
 .empty-chip { padding: 8px 10px; border-radius: 999px; color: #9ca3af; background: rgba(255,255,255,.05); font-size: 12px; }
 .more-chip { color: #ffd98a; background: rgba(246,183,60,.12); }
+.complete-action { border-color: rgba(34,197,94,.28) !important; color: #dcfce7 !important; background: rgba(34,197,94,.14) !important; }
 
 .push-button, .primary-action.visible {
   display: inline-grid;
