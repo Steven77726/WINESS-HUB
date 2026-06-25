@@ -9,7 +9,7 @@ export function normalizedStatusKey(status) {
 
 export function finalStatusKind(status) {
   const key = normalizedStatusKey(status);
-  if (["valide", "validee", "validated", "prete", "facture"].includes(key)) return "validated";
+  if (["valide", "validee", "validated", "prete", "prete avec manquants", "facture"].includes(key)) return "validated";
   if (["recupere", "recuperee", "recovered"].includes(key)) return "recovered";
   if (["livre", "livree", "delivered"].includes(key)) return "delivered";
   if (["termine", "terminee", "completed"].includes(key)) return "completed";

@@ -1,6 +1,8 @@
 import { adminClient, allowedRequest, corsHeaders, json } from "../_shared/http.ts";
 
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
+const TWO_HOURS = 2 * 60 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
 const ONE_DAY = 24 * 60 * 60 * 1000;
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 
@@ -20,7 +22,7 @@ Deno.serve(async (request) => {
       const task = row.data || {};
       if (task.kind === "profile" || task.deletedAt || isFinalStatus(task.status)) continue;
       const mode = task.reminderMode || "none";
-      const interval = mode === "4h" ? FOUR_HOURS : mode === "daily" ? ONE_DAY : 0;
+      const interval = mode === "1h" ? ONE_HOUR : mode === "2h" ? TWO_HOURS : mode === "4h" ? FOUR_HOURS : mode === "daily" ? ONE_DAY : 0;
       if (!interval || !task.assignee) continue;
       const reference = timestamp(task.lastReminderAt) || timestamp(task.createdAt) || now;
       if (now - reference < interval) continue;
@@ -93,7 +95,7 @@ function memberId(name: unknown) {
 
 function isFinalStatus(status: unknown) {
   const key = String(status || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
-  return ["valide", "validee", "validated", "prete", "facture", "recupere", "recuperee", "recovered", "livre", "livree", "delivered", "termine", "terminee", "completed"].includes(key);
+  return ["valide", "validee", "validated", "prete", "prete avec manquants", "facture", "recupere", "recuperee", "recovered", "livre", "livree", "delivered", "termine", "terminee", "completed"].includes(key);
 }
 
 function timeParis(value: number) {
