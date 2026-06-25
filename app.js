@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "306";
+const APP_VERSION = "307";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -1032,7 +1032,8 @@ function openTask(id) {
   });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
-  document.querySelector("#simulateStuart")?.addEventListener("click", () => createStuartDelivery(item));
+  document.querySelector("#simulateStuart")?.addEventListener("click", () => createStuartDelivery(item, false));
+  document.querySelector("#testStuart")?.addEventListener("click", () => createStuartDelivery(item, true));
   document.querySelectorAll("[data-product-check]").forEach((input) => input.addEventListener("change", () => toggleProductPrepared(item, input.dataset.productCheck, input.checked)));
   document.querySelector("#finishPreparation")?.addEventListener("click", () => finishPreparation(item));
   document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
@@ -1063,16 +1064,18 @@ function deliveryDetailMarkup(item) {
       <article><span>Instructions</span><strong>${escapeHtml(contact.courierInstructions || "Aucune")}</strong></article>
     </div>
     ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
-    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button>` : item.stuartJobRequestedAt ? `<div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
+    ${stuartInfoMarkup(item)}
+    ${item.stuartError ? `<div class="missing-banner">Erreur Stuart : ${escapeHtml(item.stuartError)}</div>` : ""}
+    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button><button id="testStuart" class="secondary-action visible" type="button">Mode Test</button></div>` : item.stuartJobRequestedAt ? `<div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
   </section>`;
 }
 
-async function createStuartDelivery(item) {
+async function createStuartDelivery(item, testMode = false) {
   const previousStatus = item.status;
-  const button = document.querySelector("#simulateStuart");
+  const button = document.querySelector(testMode ? "#testStuart" : "#simulateStuart");
   if (button) {
     button.disabled = true;
-    button.textContent = "Création Stuart...";
+    button.textContent = testMode ? "Test en cours..." : "Création Stuart...";
   }
   try {
     const scheduledAt = item.dueDate ? new Date(`${item.dueDate}T${item.dueTime || "12:00"}`).toISOString() : null;
@@ -1085,7 +1088,8 @@ async function createStuartDelivery(item) {
       scheduled_at: scheduledAt,
       delivery_contact: item.deliveryContact || {},
       products: normalizeProducts(item),
-      package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title
+      package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title,
+      test_mode: testMode
     };
     const response = await callEdgeFunction("stuart-api", {
       action: "create-delivery",
@@ -1095,23 +1099,53 @@ async function createStuartDelivery(item) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || "Erreur Stuart");
+    const course = extractStuartCourse(result.data);
 
     item.status = "Course demandée";
     item.stuartJobRequestedAt = new Date().toISOString();
     item.stuartJob = result.data || null;
-    item.history.push(`Livraison Stuart créée par ${CURRENT_USER} — ${dateTimeNow()}`);
+    item.stuartJobId = course.id;
+    item.stuartStatus = course.status || item.status;
+    item.stuartCreatedAt = course.createdAt || item.stuartJobRequestedAt;
+    item.stuartTrackingUrl = course.trackingUrl;
+    item.stuartTestMode = Boolean(course.testMode || testMode);
+    item.stuartError = "";
+    item.history.push(`${testMode ? "Livraison Stuart TEST créée" : "Livraison Stuart créée"} par ${CURRENT_USER}${course.id ? ` · ID ${course.id}` : ""} — ${dateTimeNow()}`);
     recordStatusActivity(item, item.status, previousStatus);
     save(item);
     render();
     el.taskDialog.close();
-    showToast("Livraison Stuart demandée");
+    showToast(testMode ? "Livraison test créée" : "Livraison Stuart demandée");
   } catch (error) {
     console.warn("Stuart indisponible", error);
-    item.history.push(`Erreur Stuart : ${error.message || "création refusée"} — ${dateTimeNow()}`);
+    item.stuartError = error.message || "création refusée";
+    item.history.push(`Erreur Stuart : ${item.stuartError} — ${dateTimeNow()}`);
     save(item);
-    showToast("Stuart non configuré ou refusé");
+    showToast(`Erreur Stuart : ${item.stuartError}`);
     openTask(item.id);
   }
+}
+
+function extractStuartCourse(data) {
+  const job = data?.job || data?.data || data || {};
+  return {
+    id: job.id || job.job_id || job.uuid || "",
+    status: job.status || job.state || "",
+    createdAt: job.created_at || job.createdAt || "",
+    trackingUrl: job.tracking_url || job.trackingUrl || job.tracking?.url || job.public_tracking_url || "",
+    testMode: Boolean(job.test_mode || data?.test_mode)
+  };
+}
+
+function stuartInfoMarkup(item) {
+  if (!item.stuartJobId && !item.stuartStatus && !item.stuartTrackingUrl) return "";
+  return `<div class="delivery-grid stuart-result">
+    <article><span>ID Stuart</span><strong>${escapeHtml(item.stuartJobId || "À venir")}</strong></article>
+    <article><span>Statut Stuart</span><strong>${escapeHtml(item.stuartStatus || item.status || "À venir")}</strong></article>
+    <article><span>Créée</span><strong>${item.stuartCreatedAt ? new Date(item.stuartCreatedAt).toLocaleString("fr-FR") : "À venir"}</strong></article>
+    <article><span>Suivi</span><strong>${item.stuartTrackingUrl ? `<a href="${escapeHtml(item.stuartTrackingUrl)}" target="_blank" rel="noopener">Ouvrir</a>` : "À venir"}</strong></article>
+    ${item.stuartTestMode ? `<article><span>Mode</span><strong>Test</strong></article>` : ""}
+  </div>`;
 }
 
 function preparationDetailMarkup(item) {
@@ -1486,7 +1520,7 @@ function absoluteNotificationUrl(value) {
 function callEdgeFunction(functionName, body) {
   return fetch(`${EDGE_FUNCTION_BASE}/${functionName}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, "x-client-info": "winess-hub-web" },
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`, "x-client-info": "winess-hub-web" },
     body: JSON.stringify(body)
   });
 }

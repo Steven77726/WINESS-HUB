@@ -11,7 +11,7 @@ export function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "";
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) ? origin : "https://steven77726.github.io",
-    "Access-Control-Allow-Headers": "apikey, content-type, x-client-info",
+    "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json",
     "Vary": "Origin",
@@ -22,7 +22,9 @@ export function allowedRequest(request: Request) {
   const origin = request.headers.get("origin");
   if (origin && !ALLOWED_ORIGINS.has(origin)) return false;
 
-  const incomingKey = request.headers.get("apikey") || "";
+  const authorization = request.headers.get("authorization") || "";
+  const bearerKey = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  const incomingKey = request.headers.get("apikey") || bearerKey;
   const publishableKeys = JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") || "{}");
   const legacyAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   return Object.values(publishableKeys).includes(incomingKey) || Boolean(legacyAnonKey && incomingKey === legacyAnonKey);

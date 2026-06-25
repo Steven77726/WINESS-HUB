@@ -63,6 +63,20 @@ Deno.serve(async (request) => {
 });
 
 async function callStuart(action: StuartAction, payload: Record<string, unknown>): Promise<StuartResponse> {
+  if (action === "create-delivery" && payload.test_mode === true) {
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        id: `test_${crypto.randomUUID()}`,
+        status: "test_created",
+        created_at: new Date().toISOString(),
+        tracking_url: "https://steven77726.github.io/WINESS-HUB/#view-rubrique-livraison",
+        test_mode: true,
+      },
+    };
+  }
+
   const token = await getStuartAccessToken();
   const baseUrl = (Deno.env.get("STUART_API_BASE_URL") || DEFAULT_API_BASE).replace(/\/$/, "");
 

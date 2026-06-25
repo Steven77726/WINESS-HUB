@@ -1258,6 +1258,12 @@ h1 {
 }
 .delivery-grid span { color: #9ca3af; font-size: 12px; font-weight: 850; }
 .delivery-grid strong { overflow-wrap: anywhere; }
+.stuart-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.stuart-result a { color: #ffd98a; text-decoration: none; }
 .delivery-products, .delivery-order-preview {
   display: grid;
   gap: 5px;
@@ -1285,7 +1291,7 @@ h1 {
   .push-panel { grid-template-columns: 1fr; align-items: stretch; }
   .product-row { grid-template-columns: 1fr; }
   .remove-product { justify-self: end; }
-  .stuart-form, .delivery-grid { grid-template-columns: 1fr; }
+  .stuart-form, .delivery-grid, .stuart-actions { grid-template-columns: 1fr; }
 }
 
 /* Rubriques métier V280 */
