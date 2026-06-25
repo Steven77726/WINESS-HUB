@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "305";
+const APP_VERSION = "306";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -1032,7 +1032,7 @@ function openTask(id) {
   });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
-  document.querySelector("#simulateStuart")?.addEventListener("click", () => simulateStuartDelivery(item));
+  document.querySelector("#simulateStuart")?.addEventListener("click", () => createStuartDelivery(item));
   document.querySelectorAll("[data-product-check]").forEach((input) => input.addEventListener("change", () => toggleProductPrepared(item, input.dataset.productCheck, input.checked)));
   document.querySelector("#finishPreparation")?.addEventListener("click", () => finishPreparation(item));
   document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
@@ -1063,26 +1063,55 @@ function deliveryDetailMarkup(item) {
       <article><span>Instructions</span><strong>${escapeHtml(contact.courierInstructions || "Aucune")}</strong></article>
     </div>
     ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
-    ${!isCompleted(item) && !item.stuartSimulationAt ? `<button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button>` : item.stuartSimulationAt ? `<div class="available-banner">Simulation Stuart créée · ${new Date(item.stuartSimulationAt).toLocaleString("fr-FR")}</div>` : ""}
+    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button>` : item.stuartJobRequestedAt ? `<div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
   </section>`;
 }
 
-function simulateStuartDelivery(item) {
+async function createStuartDelivery(item) {
   const previousStatus = item.status;
-  item.status = "Course demandée";
-  item.stuartSimulationAt = new Date().toISOString();
-  item.stuartPayloadReady = {
-    pickup_reference: item.linkedOrderId || "",
-    dropoff_contact: item.deliveryContact || {},
-    dropoff_instructions: item.deliveryContact?.courierInstructions || "",
-    package_description: item.products?.map((product) => `${product.name} x${product.requested}`).join(", ") || item.title
-  };
-  item.history.push(`Création Stuart simulée par ${CURRENT_USER} — ${dateTimeNow()}`);
-  recordStatusActivity(item, item.status, previousStatus);
-  save(item);
-  render();
-  el.taskDialog.close();
-  showToast("Simulation Stuart prête");
+  const button = document.querySelector("#simulateStuart");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Création Stuart...";
+  }
+  try {
+    const scheduledAt = item.dueDate ? new Date(`${item.dueDate}T${item.dueTime || "12:00"}`).toISOString() : null;
+    const payload = {
+      task_id: item.id,
+      title: item.title,
+      linked_order_id: item.linkedOrderId || "",
+      linked_order_title: item.linkedOrderTitle || "",
+      client_reference: item.linkedOrderId || item.id,
+      scheduled_at: scheduledAt,
+      delivery_contact: item.deliveryContact || {},
+      products: normalizeProducts(item),
+      package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title
+    };
+    const response = await callEdgeFunction("stuart-api", {
+      action: "create-delivery",
+      task_id: item.id,
+      created_by: memberIdForName(CURRENT_USER || "system"),
+      payload
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "Erreur Stuart");
+
+    item.status = "Course demandée";
+    item.stuartJobRequestedAt = new Date().toISOString();
+    item.stuartJob = result.data || null;
+    item.history.push(`Livraison Stuart créée par ${CURRENT_USER} — ${dateTimeNow()}`);
+    recordStatusActivity(item, item.status, previousStatus);
+    save(item);
+    render();
+    el.taskDialog.close();
+    showToast("Livraison Stuart demandée");
+  } catch (error) {
+    console.warn("Stuart indisponible", error);
+    item.history.push(`Erreur Stuart : ${error.message || "création refusée"} — ${dateTimeNow()}`);
+    save(item);
+    showToast("Stuart non configuré ou refusé");
+    openTask(item.id);
+  }
 }
 
 function preparationDetailMarkup(item) {

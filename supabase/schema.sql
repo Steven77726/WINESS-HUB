@@ -62,6 +62,31 @@ create table if not exists public.hub_profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.stuart_oauth_tokens (
+  provider text primary key default 'stuart',
+  access_token text not null,
+  token_type text not null default 'Bearer',
+  scope text,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.stuart_api_logs (
+  id uuid primary key default gen_random_uuid(),
+  action text not null,
+  task_id text,
+  ok boolean not null default false,
+  status_code integer,
+  request_payload jsonb,
+  response_payload jsonb,
+  error_message text,
+  created_by text not null default 'system',
+  created_at timestamptz not null default now()
+);
+create index if not exists stuart_api_logs_task_id_idx on public.stuart_api_logs (task_id);
+create index if not exists stuart_api_logs_created_at_idx on public.stuart_api_logs (created_at desc);
+
 create or replace function public.set_hub_updated_at()
 returns trigger
 language plpgsql
@@ -83,9 +108,16 @@ create trigger hub_profiles_updated_at
 before update on public.hub_profiles
 for each row execute function public.set_hub_updated_at();
 
+drop trigger if exists stuart_oauth_tokens_updated_at on public.stuart_oauth_tokens;
+create trigger stuart_oauth_tokens_updated_at
+before update on public.stuart_oauth_tokens
+for each row execute function public.set_hub_updated_at();
+
 alter table public.hub_tasks enable row level security;
 alter table public.hub_activity enable row level security;
 alter table public.hub_profiles enable row level security;
+alter table public.stuart_oauth_tokens enable row level security;
+alter table public.stuart_api_logs enable row level security;
 
 -- Mode pilote sans compte utilisateur. A remplacer par des règles Supabase Auth
 -- avant de stocker des informations clients sensibles.
@@ -116,6 +148,9 @@ revoke select on public.hub_profiles from anon, authenticated;
 grant select (id, name, role, avatar_url, notifications_enabled, updated_at) on public.hub_profiles to anon, authenticated;
 revoke insert, update on public.hub_profiles from anon, authenticated;
 grant update (avatar_url, updated_by) on public.hub_profiles to anon, authenticated;
+
+revoke all on public.stuart_oauth_tokens from anon, authenticated;
+revoke all on public.stuart_api_logs from anon, authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('avatars', 'avatars', true, 5242880, array['image/jpeg','image/png','image/webp','image/heic','image/heif'])
