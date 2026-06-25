@@ -12,7 +12,7 @@ export function finalStatusKind(status) {
   if (["valide", "validee", "validated", "prete", "prete avec manquants", "facture"].includes(key)) return "validated";
   if (["recupere", "recuperee", "recovered"].includes(key)) return "recovered";
   if (["livre", "livree", "delivered"].includes(key)) return "delivered";
-  if (["termine", "terminee", "completed"].includes(key)) return "completed";
+  if (["termine", "terminee", "completed", "annule", "annulee", "cancelled", "canceled"].includes(key)) return "completed";
   return "";
 }
 

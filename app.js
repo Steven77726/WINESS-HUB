@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "304";
+const APP_VERSION = "305";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -23,7 +23,7 @@ const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oL
 const MISSION_TYPES = {
   preparation: { label: "📦 Préparation commande", statuses: ["Attribué", "En cours", "Prête", "Prête avec manquants", "Récupérée", "Terminée"] },
   blocage: { label: "📌 Blocage produit", statuses: ["Demandé", "Bloqué", "Récupéré"] },
-  livraison: { label: "🚚 Livraison", statuses: ["À préparer", "Prêt départ", "En livraison", "Livré"] },
+  livraison: { label: "🚚 Livraison", statuses: ["Créée", "Course demandée", "Coursier accepté", "Coursier en route", "Coursier arrivé", "Commande récupérée", "En livraison", "Livrée", "Annulée"] },
   inventaire: { label: "📊 Inventaire", statuses: ["Attribué", "En cours", "Terminé"] },
   rappel: { label: "📞 Rappel client", statuses: ["Attribué", "Pris en charge", "Terminé"] },
   litige: { label: "⚠️ Litige", statuses: ["Attribué", "Pris en charge", "Terminé"] },
@@ -47,6 +47,24 @@ const seedTasks = [
   task("litige", "Valider litige fournisseur", "litige", "David", "Steven", "Haute", "Aujourd'hui 16h", "Écart de prix à arbitrer.", 140),
   task("cohen", "Rappeler Madame Cohen", "rappel", "Zac", "Steven", "🔥 Urgente", "Aujourd'hui 17h", "Client à rappeler avant 18h.", 40),
   task("facture", "Contrôler anomalie facture", "autre", "Valérie", "David", "Normale", "Demain matin", "Vérifier le montant.", 12)
+];
+
+const defaultAddressBook = [
+  {
+    id: "avi-rebibo",
+    firstName: "Avi",
+    lastName: "Rebibo",
+    company: "",
+    address: "",
+    address2: "",
+    postcode: "",
+    city: "Neuilly",
+    phone: "",
+    accessCode: "",
+    floor: "",
+    elevator: "",
+    courierInstructions: ""
+  }
 ];
 
 const state = loadState();
@@ -251,9 +269,9 @@ function loadState() {
     const source = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("winess-hub:v252") || "{}";
     const saved = JSON.parse(source);
     const tasks = (saved.tasks || seedTasks).map(migrateTask);
-    return { tasks, avatars: saved.avatars || {}, activity: saved.activity || [] };
+    return { tasks, avatars: saved.avatars || {}, activity: saved.activity || [], addressBook: saved.addressBook || defaultAddressBook };
   } catch {
-    return { tasks: seedTasks, avatars: {}, activity: [] };
+    return { tasks: seedTasks, avatars: {}, activity: [], addressBook: defaultAddressBook };
   }
 }
 
@@ -546,7 +564,8 @@ function renderRubric(key) {
   const archivedTasks = tasks.filter(isCompleted).sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
   el.rubricTitle.textContent = type.label;
   el.rubricSummary.innerHTML = `<span>${activeTasks.length} en cours</span><span>${archivedTasks.length} archivée${archivedTasks.length > 1 ? "s" : ""}</span>`;
-  el.rubricList.innerHTML = `<section class="rubric-section"><h3>En cours</h3>${activeTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche en cours.</p>`}</section><section class="rubric-section"><h3>Archivées</h3>${archivedTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche archivée.</p>`}</section>`;
+  const action = key === "livraison" ? `<button class="primary-action visible rubric-create" data-new-delivery type="button">➕ Nouvelle livraison</button>` : "";
+  el.rubricList.innerHTML = `${action}<section class="rubric-section"><h3>En cours</h3>${activeTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche en cours.</p>`}</section><section class="rubric-section"><h3>Archivées</h3>${archivedTasks.map(rubricCard).join("") || `<p class="empty-state">Aucune tâche archivée.</p>`}</section>`;
 }
 
 function rubricCard(item) {
@@ -630,6 +649,17 @@ function searchableTaskText(item) {
     item.telephone,
     item.orderRef,
     item.reference,
+    item.linkedOrderTitle,
+    item.deliveryContact?.firstName,
+    item.deliveryContact?.lastName,
+    item.deliveryContact?.company,
+    item.deliveryContact?.address,
+    item.deliveryContact?.address2,
+    item.deliveryContact?.postcode,
+    item.deliveryContact?.city,
+    item.deliveryContact?.phone,
+    item.deliveryContact?.accessCode,
+    item.deliveryContact?.courierInstructions,
     item.status,
     item.priority,
     item.missionType,
@@ -805,6 +835,125 @@ function updateCreatorProductSummary() {
   document.querySelector("#productSummaryBox").innerHTML = productSummaryMarkup(products);
 }
 
+function availableDeliveryOrders() {
+  return state.tasks.filter((item) => item.missionType === "preparation" && !isDeleted(item) && ["Attribué", "En cours", "Prête", "Prête avec manquants"].includes(item.status));
+}
+
+function contactFullName(contact) {
+  return [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.company || "Contact";
+}
+
+function openDeliveryCreator() {
+  if (!requireIdentity()) return;
+  const orders = availableDeliveryOrders();
+  const defaults = defaultDeadline();
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Livraison Stuart</p><h2>Nouvelle livraison</h2></div></header>
+    <form class="task-form creator-form" id="deliveryForm">
+      <label class="wide">Commande à livrer<select id="deliveryOrderSelect" name="orderId" required><option value="">Choisir une commande</option>${orders.map((order) => `<option value="${order.id}">${escapeHtml(order.title)}</option>`).join("")}</select></label>
+      <label class="wide">Destinataire<select id="deliveryContactSelect" name="contactId"><option value="">Nouveau destinataire</option>${state.addressBook.map((contact) => `<option value="${contact.id}">${escapeHtml(contactFullName(contact))}${contact.city ? ` · ${escapeHtml(contact.city)}` : ""}</option>`).join("")}</select></label>
+      <section class="stuart-form wide">
+        <label>Titre<input id="deliveryTitle" name="title" required placeholder="Livraison Mr Benhamou"></label>
+        <label>Assigné à<select name="assignee">${members.map((member) => `<option ${member.name === "Steven" ? "selected" : ""}>${member.name}</option>`).join("")}</select></label>
+        <label>Priorité<select name="priority"><option>Normale</option><option>Haute</option><option>🔥 Urgente</option></select></label>
+        <label>Date livraison<input name="dueDate" type="date" value="${defaults.date}" required></label>
+        <label>Heure<input name="dueTime" type="time" value="${defaults.time}" required></label>
+        <label>Statut<select name="status">${statusesForType("livraison").map((status) => `<option>${status}</option>`).join("")}</select></label>
+        <label>Prénom<input name="firstName" data-contact-field="firstName"></label>
+        <label>Nom<input name="lastName" data-contact-field="lastName"></label>
+        <label>Entreprise<input name="company" data-contact-field="company"></label>
+        <label>Téléphone<input name="phone" data-contact-field="phone" inputmode="tel"></label>
+        <label class="wide">Adresse<input name="address" data-contact-field="address" placeholder="Adresse complète"></label>
+        <label>Complément<input name="address2" data-contact-field="address2"></label>
+        <label>Code postal<input name="postcode" data-contact-field="postcode" inputmode="numeric"></label>
+        <label>Ville<input name="city" data-contact-field="city"></label>
+        <label>Digicode<input name="accessCode" data-contact-field="accessCode"></label>
+        <label>Étage<input name="floor" data-contact-field="floor"></label>
+        <label>Ascenseur<select name="elevator" data-contact-field="elevator"><option value="">À préciser</option><option>Oui</option><option>Non</option></select></label>
+        <label class="wide">Instructions livreur<textarea name="courierInstructions" data-contact-field="courierInstructions"></textarea></label>
+        <label class="wide">Notes commande<textarea id="deliveryNotes" name="notes"></textarea></label>
+      </section>
+      <section class="delivery-order-preview wide" id="deliveryOrderPreview"></section>
+      <button class="primary-action visible wide" type="submit">Valider la livraison</button>
+    </form>`;
+  document.querySelector("#deliveryOrderSelect").addEventListener("change", syncDeliveryOrderFields);
+  document.querySelector("#deliveryContactSelect").addEventListener("change", syncDeliveryContactFields);
+  document.querySelector("#deliveryForm").addEventListener("submit", createDeliveryTask);
+  el.taskDialog.showModal();
+}
+
+function syncDeliveryOrderFields() {
+  const order = state.tasks.find((task) => task.id === document.querySelector("#deliveryOrderSelect").value);
+  if (!order) return;
+  document.querySelector("#deliveryTitle").value = `Livraison ${order.title}`;
+  document.querySelector("#deliveryNotes").value = order.notes || "";
+  document.querySelector("#deliveryOrderPreview").innerHTML = `<strong>Commande chargée</strong><span>${escapeHtml(order.status)} · assignée à ${escapeHtml(order.assignee)} par ${escapeHtml(order.createdBy)}</span>${order.products?.length ? `<div>${order.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}`;
+}
+
+function syncDeliveryContactFields() {
+  const contact = state.addressBook.find((item) => item.id === document.querySelector("#deliveryContactSelect").value);
+  if (!contact) return;
+  document.querySelectorAll("[data-contact-field]").forEach((input) => {
+    input.value = contact[input.dataset.contactField] || "";
+  });
+}
+
+function createDeliveryTask(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const order = state.tasks.find((task) => task.id === form.get("orderId"));
+  if (!order) {
+    showToast("Choisissez une commande à livrer");
+    return;
+  }
+  const deliveryContact = {
+    firstName: form.get("firstName") || "",
+    lastName: form.get("lastName") || "",
+    company: form.get("company") || "",
+    phone: form.get("phone") || "",
+    address: form.get("address") || "",
+    address2: form.get("address2") || "",
+    postcode: form.get("postcode") || "",
+    city: form.get("city") || "",
+    accessCode: form.get("accessCode") || "",
+    floor: form.get("floor") || "",
+    elevator: form.get("elevator") || "",
+    courierInstructions: form.get("courierInstructions") || ""
+  };
+  const assignee = form.get("assignee") || "Steven";
+  const item = {
+    id: `task-${Date.now()}`,
+    title: form.get("title"),
+    missionType: "livraison",
+    linkedOrderId: order.id,
+    linkedOrderTitle: order.title,
+    products: normalizeProducts(order),
+    deliveryContact,
+    assignee,
+    assignedTo: assignee,
+    createdBy: CURRENT_USER,
+    assignedBy: CURRENT_USER,
+    priority: form.get("priority"),
+    dueDate: form.get("dueDate"),
+    dueTime: form.get("dueTime"),
+    due: formatDeadline(form.get("dueDate"), form.get("dueTime")),
+    notes: form.get("notes"),
+    status: form.get("status") || "Créée",
+    reminderMode: "none",
+    reminderEnabled: false,
+    lastReminderAt: null,
+    createdAt: Date.now(),
+    seenBy: [],
+    history: [`Livraison créée par ${CURRENT_USER} — ${dateTimeNow()}`, `Commande liée : ${order.title} — ${dateTimeNow()}`]
+  };
+  state.tasks.unshift(item);
+  addActivity(`${CURRENT_USER} a créé une livraison Stuart pour ${order.title}`);
+  save(item);
+  render();
+  el.taskDialog.close();
+  sendPush(assignee, "Nouvelle livraison", `${CURRENT_USER} vous a assigné : ${item.title}`, `#task-${item.id}`, `task:${item.id}:delivery-created`);
+  showToast("Livraison créée");
+}
+
 function collectProductsFromForm() {
   return [...document.querySelectorAll(".product-row")].map((row, index) => ({
     id: row.dataset.productId || `product-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
@@ -866,6 +1015,7 @@ function openTask(id) {
     <section class="task-detail-grid"><article><span>Statut</span><strong>${isDeleted(item) ? "Supprimée" : item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date limite</span><strong>${formatDue(item)}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
     ${completionDatesMarkup(item)}
     ${item.missionType === "devis" ? `<section class="quantity-status"><article><span>Client</span><strong>${item.client || "À préciser"}</strong></article><article><span>Montant</span><strong>${formatAmount(item.amount)}</strong></article><article><span>Date du devis</span><strong>${formatDate(item.quoteDate)}</strong></article></section>` : ""}
+    ${item.missionType === "livraison" ? deliveryDetailMarkup(item) : ""}
     ${item.missionType !== "preparation" && (item.requested || item.available) ? `<section class="quantity-status"><article><span>Demandé</span><strong>${item.requested || 0}</strong></article><article><span>Disponible</span><strong>${item.available || 0}</strong></article><article class="${missingQuantity(item) ? "has-missing" : ""}"><span>Manquant</span><strong>${missingQuantity(item)}</strong></article></section>` : ""}
     ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
     ${item.missionType === "preparation" ? preparationDetailMarkup(item) : ""}
@@ -882,6 +1032,7 @@ function openTask(id) {
   });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
+  document.querySelector("#simulateStuart")?.addEventListener("click", () => simulateStuartDelivery(item));
   document.querySelectorAll("[data-product-check]").forEach((input) => input.addEventListener("change", () => toggleProductPrepared(item, input.dataset.productCheck, input.checked)));
   document.querySelector("#finishPreparation")?.addEventListener("click", () => finishPreparation(item));
   document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
@@ -894,6 +1045,44 @@ function validateTask(item) {
   const statusSelect = document.querySelector("#taskStatus");
   if (statusSelect) statusSelect.value = "Validé";
   saveTaskDetails(item);
+}
+
+function deliveryDetailMarkup(item) {
+  const contact = item.deliveryContact || {};
+  const address = [contact.address, contact.address2, contact.postcode, contact.city].filter(Boolean).join(", ") || "Adresse à préciser";
+  return `<section class="delivery-panel">
+    <header><h3>Livraison Stuart</h3><span>${escapeHtml(item.status)}</span></header>
+    <div class="delivery-grid">
+      <article><span>Commande</span><strong>${escapeHtml(item.linkedOrderTitle || "Non liée")}</strong></article>
+      <article><span>Destinataire</span><strong>${escapeHtml([contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.company || "À préciser")}</strong></article>
+      <article><span>Téléphone</span><strong>${escapeHtml(contact.phone || "À préciser")}</strong></article>
+      <article><span>Adresse</span><strong>${escapeHtml(address)}</strong></article>
+      <article><span>Digicode</span><strong>${escapeHtml(contact.accessCode || "À préciser")}</strong></article>
+      <article><span>Étage</span><strong>${escapeHtml(contact.floor || "À préciser")}</strong></article>
+      <article><span>Ascenseur</span><strong>${escapeHtml(contact.elevator || "À préciser")}</strong></article>
+      <article><span>Instructions</span><strong>${escapeHtml(contact.courierInstructions || "Aucune")}</strong></article>
+    </div>
+    ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
+    ${!isCompleted(item) && !item.stuartSimulationAt ? `<button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button>` : item.stuartSimulationAt ? `<div class="available-banner">Simulation Stuart créée · ${new Date(item.stuartSimulationAt).toLocaleString("fr-FR")}</div>` : ""}
+  </section>`;
+}
+
+function simulateStuartDelivery(item) {
+  const previousStatus = item.status;
+  item.status = "Course demandée";
+  item.stuartSimulationAt = new Date().toISOString();
+  item.stuartPayloadReady = {
+    pickup_reference: item.linkedOrderId || "",
+    dropoff_contact: item.deliveryContact || {},
+    dropoff_instructions: item.deliveryContact?.courierInstructions || "",
+    package_description: item.products?.map((product) => `${product.name} x${product.requested}`).join(", ") || item.title
+  };
+  item.history.push(`Création Stuart simulée par ${CURRENT_USER} — ${dateTimeNow()}`);
+  recordStatusActivity(item, item.status, previousStatus);
+  save(item);
+  render();
+  el.taskDialog.close();
+  showToast("Simulation Stuart prête");
 }
 
 function preparationDetailMarkup(item) {
@@ -1097,6 +1286,8 @@ function bindGlobal() {
     if (status) { event.stopPropagation(); updateStatus(status.dataset.status); return; }
     const reminder = event.target.closest("[data-remind]");
     if (reminder) { event.stopPropagation(); remindTask(reminder.dataset.remind); return; }
+    const newDelivery = event.target.closest("[data-new-delivery]");
+    if (newDelivery) { event.stopPropagation(); openDeliveryCreator(); return; }
     const member = event.target.closest("[data-member]");
     if (member) { event.stopPropagation(); el.searchResults.hidden = true; openMember(member.dataset.member); return; }
     const view = event.target.closest("[data-open-view]");

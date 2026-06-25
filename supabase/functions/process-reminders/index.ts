@@ -95,7 +95,7 @@ function memberId(name: unknown) {
 
 function isFinalStatus(status: unknown) {
   const key = String(status || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
-  return ["valide", "validee", "validated", "prete", "prete avec manquants", "facture", "recupere", "recuperee", "recovered", "livre", "livree", "delivered", "termine", "terminee", "completed"].includes(key);
+  return ["valide", "validee", "validated", "prete", "prete avec manquants", "facture", "recupere", "recuperee", "recovered", "livre", "livree", "delivered", "termine", "terminee", "completed", "annule", "annulee", "cancelled", "canceled"].includes(key);
 }
 
 function timeParis(value: number) {

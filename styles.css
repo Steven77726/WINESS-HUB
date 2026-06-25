@@ -1234,6 +1234,38 @@ h1 {
 .prep-product.is-prepared strong { color: #86efac; text-decoration: line-through; }
 .available-banner { padding: 12px; border-radius: 18px; color: #bbf7d0; background: rgba(34,197,94,.12); font-weight: 900; }
 .prep-finish { min-height: 48px; border-radius: 18px !important; }
+.rubric-create { width: 100%; margin-bottom: 12px; }
+.stuart-form, .delivery-panel {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 22px;
+  background: rgba(255,255,255,.045);
+}
+.delivery-panel { grid-template-columns: 1fr; }
+.delivery-panel header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.delivery-panel h3 { margin: 0; }
+.delivery-panel header span { padding: 7px 10px; border-radius: 999px; color: #ffd98a; background: rgba(246,183,60,.13); font-size: 12px; font-weight: 900; }
+.delivery-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.delivery-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border-radius: 16px;
+  background: rgba(6,9,15,.5);
+}
+.delivery-grid span { color: #9ca3af; font-size: 12px; font-weight: 850; }
+.delivery-grid strong { overflow-wrap: anywhere; }
+.delivery-products, .delivery-order-preview {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border-radius: 16px;
+  background: rgba(59,130,246,.09);
+}
+.delivery-products small, .delivery-order-preview small, .delivery-order-preview span { color: #bfdbfe; font-size: 12px; }
 .whatsapp-share, .whatsapp-action { border-color: rgba(34,197,94,.3) !important; color: #d9ffe5 !important; background: rgba(34,197,94,.15) !important; }
 .assignment-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .read-status { display: grid; gap: 7px; }
@@ -1253,6 +1285,7 @@ h1 {
   .push-panel { grid-template-columns: 1fr; align-items: stretch; }
   .product-row { grid-template-columns: 1fr; }
   .remove-product { justify-self: end; }
+  .stuart-form, .delivery-grid { grid-template-columns: 1fr; }
 }
 
 /* Rubriques métier V280 */
