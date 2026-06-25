@@ -13,6 +13,8 @@ const DEFAULT_API_BASE = "https://api.stuart.com/v2";
 const DEFAULT_AUTH_URL = "https://api.stuart.com/oauth/token";
 const TOKEN_PROVIDER = "stuart";
 
+class StuartConfigError extends Error {}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
   if (request.method !== "POST") return json(request, { error: "Méthode refusée" }, 405);
@@ -52,13 +54,14 @@ Deno.serve(async (request) => {
     });
   } catch (error) {
     console.error("stuart-api", error);
+    const message = error instanceof Error ? error.message : "Erreur serveur";
     await logStuartCall(action || "unknown", taskId, createdBy, payload, {
       ok: false,
-      status: 500,
+      status: error instanceof StuartConfigError ? 400 : 500,
       data: null,
-      error: error instanceof Error ? error.message : "Erreur serveur",
+      error: message,
     }).catch(() => {});
-    return json(request, { error: "Erreur serveur Stuart" }, 500);
+    return json(request, { error: error instanceof StuartConfigError ? message : "Erreur serveur Stuart" }, error instanceof StuartConfigError ? 400 : 500);
   }
 });
 
@@ -77,13 +80,15 @@ async function callStuart(action: StuartAction, payload: Record<string, unknown>
     };
   }
 
-  const token = await getStuartAccessToken();
   const baseUrl = (Deno.env.get("STUART_API_BASE_URL") || DEFAULT_API_BASE).replace(/\/$/, "");
 
   if (action === "create-delivery") {
-    return fetchStuart(`${baseUrl}/jobs`, "POST", token, buildCreateDeliveryPayload(payload));
+    const body = buildCreateDeliveryPayload(payload);
+    const token = await getStuartAccessToken();
+    return fetchStuart(`${baseUrl}/jobs`, "POST", token, body);
   }
 
+  const token = await getStuartAccessToken();
   const jobId = validText(payload.job_id, 180) ? String(payload.job_id) : validText(payload.stuart_job_id, 180) ? String(payload.stuart_job_id) : "";
   if (!jobId) return { ok: false, status: 400, data: null, error: "Identifiant course Stuart manquant" };
 
@@ -94,40 +99,92 @@ async function callStuart(action: StuartAction, payload: Record<string, unknown>
 
 function buildCreateDeliveryPayload(payload: Record<string, unknown>) {
   const contact = objectValue(payload.delivery_contact);
-  const pickup = objectValue(payload.pickup);
+  const pickup = buildPickup(payload);
   const products = Array.isArray(payload.products) ? payload.products : [];
   const packageDescription = products
     .map((product) => objectValue(product))
     .map((product) => `${String(product.name || "Produit")} x${Number(product.requested || 0) || 1}`)
     .join(", ");
+  const dropoff = buildDropoff(contact, payload, packageDescription);
+  if ((Deno.env.get("STUART_PAYLOAD_FORMAT") || "nested") === "flat") {
+    return {
+      account_id: Deno.env.get("STUART_ACCOUNT_ID"),
+      pickup,
+      dropoff,
+      package_description: dropoff.package_description,
+      client_reference: dropoff.client_reference,
+      scheduled_at: payload.scheduled_at || null,
+      metadata: buildMetadata(payload),
+    };
+  }
 
   return {
-    account_id: Deno.env.get("STUART_ACCOUNT_ID"),
-    pickup,
-    dropoff: {
-      firstname: contact.firstName || contact.firstname || "",
-      lastname: contact.lastName || contact.lastname || "",
-      company: contact.company || "",
-      phone: contact.phone || "",
-      address: contact.address || "",
-      address2: contact.address2 || "",
-      postcode: contact.postcode || "",
-      city: contact.city || "",
-      country: contact.country || "FR",
-      access_code: contact.accessCode || contact.access_code || "",
-      floor: contact.floor || "",
-      has_elevator: contact.elevator === "Oui" ? true : contact.elevator === "Non" ? false : undefined,
-      instructions: contact.courierInstructions || contact.instructions || "",
+    job: {
+      account_id: Deno.env.get("STUART_ACCOUNT_ID"),
+      pickups: [pickup],
+      dropoffs: [dropoff],
+      scheduled_at: payload.scheduled_at || null,
+      metadata: buildMetadata(payload),
     },
-    package_description: payload.package_description || packageDescription || payload.title || "Livraison Winess",
-    client_reference: payload.client_reference || payload.linked_order_id || payload.task_id || "",
-    scheduled_at: payload.scheduled_at || null,
-    metadata: {
-      source: "winess-hub",
-      task_id: payload.task_id || "",
-      linked_order_id: payload.linked_order_id || "",
-      linked_order_title: payload.linked_order_title || "",
+  };
+}
+
+function buildPickup(payload: Record<string, unknown>) {
+  const pickup = objectValue(payload.pickup);
+  const address = stringEnv("STUART_PICKUP_ADDRESS") || String(pickup.address || "");
+  const city = stringEnv("STUART_PICKUP_CITY") || String(pickup.city || "");
+  const postcode = stringEnv("STUART_PICKUP_POSTCODE") || stringEnv("STUART_PICKUP_POSTAL_CODE") || String(pickup.postcode || pickup.postal_code || "");
+  const phone = stringEnv("STUART_PICKUP_PHONE") || String(pickup.phone || "");
+  if (!address) throw new StuartConfigError("Adresse d’enlèvement Stuart manquante.");
+  if (!city) throw new StuartConfigError("Ville d’enlèvement Stuart manquante.");
+  if (!postcode) throw new StuartConfigError("Code postal d’enlèvement Stuart manquant.");
+  if (!phone) throw new StuartConfigError("Téléphone d’enlèvement Stuart manquant.");
+  return {
+    address,
+    address2: stringEnv("STUART_PICKUP_ADDRESS_EXTRA") || String(pickup.address2 || ""),
+    postcode,
+    city,
+    country: stringEnv("STUART_PICKUP_COUNTRY") || "FR",
+    access_code: stringEnv("STUART_PICKUP_ACCESS_CODE") || String(pickup.access_code || ""),
+    comment: stringEnv("STUART_PICKUP_INSTRUCTIONS") || String(pickup.instructions || pickup.comment || ""),
+    contact: {
+      firstname: stringEnv("STUART_PICKUP_FIRST_NAME") || "Winess",
+      lastname: stringEnv("STUART_PICKUP_LAST_NAME") || "Hub",
+      company: stringEnv("STUART_PICKUP_COMPANY") || "Winess",
+      phone,
     },
+  };
+}
+
+function buildDropoff(contact: Record<string, unknown>, payload: Record<string, unknown>, packageDescription: string) {
+  return {
+    address: String(contact.address || ""),
+    address2: String(contact.address2 || ""),
+    postcode: String(contact.postcode || contact.postal_code || ""),
+    city: String(contact.city || ""),
+    country: String(contact.country || "FR"),
+    access_code: String(contact.accessCode || contact.access_code || ""),
+    floor: String(contact.floor || ""),
+    has_elevator: contact.elevator === "Oui" ? true : contact.elevator === "Non" ? false : undefined,
+    comment: String(contact.courierInstructions || contact.instructions || ""),
+    package_type: String(payload.package_type || Deno.env.get("STUART_PACKAGE_TYPE") || "small"),
+    package_description: String(payload.package_description || packageDescription || payload.title || "Livraison Winess"),
+    client_reference: String(payload.client_reference || payload.linked_order_id || payload.task_id || ""),
+    contact: {
+      firstname: String(contact.firstName || contact.firstname || ""),
+      lastname: String(contact.lastName || contact.lastname || ""),
+      company: String(contact.company || ""),
+      phone: String(contact.phone || ""),
+    },
+  };
+}
+
+function buildMetadata(payload: Record<string, unknown>) {
+  return {
+    source: "winess-hub",
+    task_id: payload.task_id || "",
+    linked_order_id: payload.linked_order_id || "",
+    linked_order_title: payload.linked_order_title || "",
   };
 }
 
@@ -166,14 +223,17 @@ async function getStuartAccessToken() {
   const audience = Deno.env.get("STUART_OAUTH_AUDIENCE");
   if (scope) form.set("scope", scope);
   if (audience) form.set("audience", audience);
+  const headers = new Headers({ "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" });
+  if ((Deno.env.get("STUART_AUTH_STYLE") || "basic") === "body") {
+    form.set("client_id", clientId);
+    form.set("client_secret", clientSecret);
+  } else {
+    headers.set("Authorization", `Basic ${btoa(`${clientId}:${clientSecret}`)}`);
+  }
 
   const response = await fetch(authUrl, {
     method: "POST",
-    headers: {
-      Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
+    headers,
     body: form,
   });
   const tokenData = objectValue(await readJsonSafe(response));
@@ -225,6 +285,10 @@ async function readJsonSafe(response: Response) {
 function errorMessage(value: unknown) {
   const object = objectValue(value);
   return String(object.error_description || object.error || object.message || "");
+}
+
+function stringEnv(name: string) {
+  return Deno.env.get(name)?.trim() || "";
 }
 
 function redactPayload(value: unknown) {
