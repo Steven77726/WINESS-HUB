@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "303";
+const APP_VERSION = "304";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -483,7 +483,7 @@ function memberCard(member) {
         ${avatar ? `<img src="${avatar}" alt="${member.name}">` : `<span>${member.name[0]}</span>`}
         ${activeTasks.length ? `<span class="task-badge">${activeTasks.length}</span>` : ""}
       </button>
-      <button class="profile-plus" data-add-task="${member.name}" type="button">+</button>
+      <button class="profile-plus" data-add-task="${member.name}" type="button" aria-label="Nouvelle tâche pour ${member.name}">+</button>
     </div>
     <div class="employee-tags">
       ${tasks.slice(0, 3).map(taskChip).join("") || `<span class="empty-chip">${homeEmptyLabel()}</span>`}
