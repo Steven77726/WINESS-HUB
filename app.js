@@ -11,6 +11,8 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
+const APP_VERSION = "301";
+const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
 const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()}`;
@@ -86,12 +88,29 @@ const el = {
   activeProfileAvatar: document.querySelector("#activeProfileAvatar")
 };
 
-save();
-render();
-bindGlobal();
-handleHash();
-registerServiceWorker();
-initializeSupabase().finally(initializeIdentity);
+if (IS_FILE_MODE) {
+  showHostedAppRedirect();
+} else {
+  save();
+  render();
+  bindGlobal();
+  handleHash();
+  registerServiceWorker();
+  initializeSupabase().finally(initializeIdentity);
+}
+
+function showHostedAppRedirect() {
+  const target = `${APP_BASE_URL}index.html?v=${APP_VERSION}${location.hash || "#view-accueil"}`;
+  document.body.innerHTML = `<main class="file-mode-redirect">
+    <section>
+      <span class="brand-mark">W</span>
+      <h1>Ouverture de Winess Hub</h1>
+      <p>L’app doit être ouverte depuis l’adresse en ligne pour se connecter à Supabase, synchroniser les tâches et activer les notifications.</p>
+      <a href="${target}">Ouvrir la version connectée</a>
+    </section>
+  </main>`;
+  window.setTimeout(() => location.replace(target), 900);
+}
 
 function readDeviceSession() {
   try {
@@ -778,7 +797,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `${APP_BASE_URL}index.html?v=300#task-${item.id}`;
+  const url = `${APP_BASE_URL}index.html?v=${APP_VERSION}#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
