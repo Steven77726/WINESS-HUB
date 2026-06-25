@@ -9,8 +9,8 @@
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/winess-icon.svg">
-    <link rel="stylesheet" href="styles.css?v=307">
-    <script type="module" src="app.js?v=307"></script>
+    <link rel="stylesheet" href="styles.css?v=308">
+    <script type="module" src="app.js?v=308"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -24,6 +24,7 @@
           <button class="nav-item" data-view="rubrique-preparation" data-rubric="preparation" data-icon="📦" type="button">Préparation commande</button>
           <button class="nav-item" data-view="rubrique-blocage" data-rubric="blocage" data-icon="📌" type="button">Blocage produit</button>
           <button class="nav-item" data-view="rubrique-livraison" data-rubric="livraison" data-icon="🚚" type="button">Livraison</button>
+          <button class="nav-item" data-view="carnet-adresses" type="button">Carnet d’adresses</button>
           <button class="nav-item" data-view="rubrique-inventaire" data-rubric="inventaire" data-icon="📊" type="button">Inventaire</button>
           <button class="nav-item" data-view="rubrique-rappel" data-rubric="rappel" data-icon="📞" type="button">Rappel client</button>
           <button class="nav-item" data-view="rubrique-litige" data-rubric="litige" data-icon="⚠️" type="button">Litige</button>
@@ -79,6 +80,15 @@
         </section>
 
         <section class="view tool-view" data-panel="rubrique"><p class="eyebrow">Rubrique</p><h2 id="rubricTitle"></h2><div class="rubric-summary" id="rubricSummary"></div><div class="tool-list" id="rubricList"></div></section>
+        <section class="view tool-view" data-panel="carnet-adresses">
+          <p class="eyebrow">Stuart</p>
+          <h2>Carnet d’adresses</h2>
+          <div class="address-toolbar">
+            <input id="addressSearch" type="search" placeholder="Rechercher Avi, Rebibo, Neuilly, 06..." autocomplete="off">
+            <button class="primary-action visible" id="newContactButton" type="button">+ Ajouter</button>
+          </div>
+          <div class="tool-list address-list" id="addressBookList"></div>
+        </section>
         <section class="view tool-view" data-panel="activite"><p class="eyebrow">Activité</p><h2>Journal de bord</h2><div class="activity-feed" id="activityList"></div></section>
         <section class="view tool-view" data-panel="archives"><p class="eyebrow">Archives</p><h2>Tâches terminées</h2><div class="tool-list" id="archivesList"></div></section>
       </main>

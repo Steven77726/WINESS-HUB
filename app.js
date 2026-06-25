@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "307";
+const APP_VERSION = "308";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -98,6 +98,8 @@ const el = {
   globalSearch: document.querySelector("#globalSearch"),
   searchFilters: document.querySelector("#searchFilters"),
   searchResults: document.querySelector("#searchResults"),
+  addressSearch: document.querySelector("#addressSearch"),
+  addressBookList: document.querySelector("#addressBookList"),
   toast: document.querySelector("#appToast"),
   profileGate: document.querySelector("#profileGate"),
   profileGateContent: document.querySelector("#profileGateContent"),
@@ -269,10 +271,34 @@ function loadState() {
     const source = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("winess-hub:v252") || "{}";
     const saved = JSON.parse(source);
     const tasks = (saved.tasks || seedTasks).map(migrateTask);
-    return { tasks, avatars: saved.avatars || {}, activity: saved.activity || [], addressBook: saved.addressBook || defaultAddressBook };
+    return { tasks, avatars: saved.avatars || {}, activity: saved.activity || [], addressBook: (saved.addressBook || defaultAddressBook).map(normalizeContact) };
   } catch {
-    return { tasks: seedTasks, avatars: {}, activity: [], addressBook: defaultAddressBook };
+    return { tasks: seedTasks, avatars: {}, activity: [], addressBook: defaultAddressBook.map(normalizeContact) };
   }
+}
+
+function normalizeContact(contact = {}) {
+  const hasElevator = typeof contact.hasElevator === "boolean" ? contact.hasElevator : contact.elevator === "Oui" ? true : contact.elevator === "Non" ? false : null;
+  return {
+    id: contact.id || `contact-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    firstName: contact.firstName || contact.first_name || "",
+    lastName: contact.lastName || contact.last_name || "",
+    company: contact.company || "",
+    phone: contact.phone || "",
+    address: contact.address || "",
+    address2: contact.address2 || contact.address_extra || "",
+    postcode: contact.postcode || contact.postal_code || "",
+    city: contact.city || "",
+    accessCode: contact.accessCode || contact.access_code || "",
+    floor: contact.floor || "",
+    elevator: hasElevator === true ? "Oui" : hasElevator === false ? "Non" : contact.elevator || "",
+    hasElevator,
+    courierInstructions: contact.courierInstructions || contact.delivery_instructions || "",
+    internalNotes: contact.internalNotes || contact.internal_notes || "",
+    createdAt: contact.createdAt || contact.created_at || new Date().toISOString(),
+    updatedAt: contact.updatedAt || contact.updated_at || new Date().toISOString(),
+    archivedAt: contact.archivedAt || contact.archived_at || null
+  };
 }
 
 function migrateTask(item, databaseUpdatedAt = null) {
@@ -319,6 +345,7 @@ function render() {
   renderMyTasks();
   renderTools();
   renderActivity();
+  renderAddressBook();
   renderRubricCounts();
   const currentRubric = location.hash.match(/^#view-rubrique-(.+)$/)?.[1];
   if (currentRubric) renderRubric(currentRubric);
@@ -590,6 +617,50 @@ function renderActivity() {
   el.activity.innerHTML = state.activity.map((event) => `<article class="activity-item"><span>${event.time}</span><p>${event.text}</p></article>`).join("") || `<p class="empty-state">Aucune activité enregistrée.</p>`;
 }
 
+function renderAddressBook() {
+  if (!el.addressBookList) return;
+  const query = normalizeSearch(el.addressSearch?.value || "");
+  const contacts = activeContacts()
+    .filter((contact) => !query || contactSearchText(contact).includes(query))
+    .sort((a, b) => contactFullName(a).localeCompare(contactFullName(b), "fr"));
+  el.addressBookList.innerHTML = contacts.map(contactCard).join("") || `<p class="empty-state">Aucun contact trouvé.</p>`;
+}
+
+function activeContacts() {
+  return state.addressBook.filter((contact) => !contact.archivedAt);
+}
+
+function contactSearchText(contact) {
+  return normalizeSearch([
+    contact.firstName,
+    contact.lastName,
+    contact.company,
+    contact.phone,
+    contact.address,
+    contact.address2,
+    contact.postcode,
+    contact.city,
+    contact.accessCode,
+    contact.courierInstructions,
+    contact.internalNotes
+  ].filter(Boolean).join(" "));
+}
+
+function contactCard(contact) {
+  const name = contactFullName(contact);
+  return `<article class="contact-card">
+    <button class="contact-main" data-edit-contact="${contact.id}" type="button">
+      <strong>${escapeHtml(name)}</strong>
+      <span>${escapeHtml([contact.company, contact.city].filter(Boolean).join(" · ") || "Destinataire")}</span>
+      <small>${escapeHtml([contact.phone, contact.address].filter(Boolean).join(" · ") || "Coordonnées à compléter")}</small>
+    </button>
+    <div class="contact-actions">
+      <button data-edit-contact="${contact.id}" type="button">Modifier</button>
+      <button data-archive-contact="${contact.id}" type="button">Archiver</button>
+    </div>
+  </article>`;
+}
+
 function renderSearchResults(query) {
   const normalized = normalizeSearch(query);
   if (!normalized) {
@@ -850,7 +921,11 @@ function openDeliveryCreator() {
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Livraison Stuart</p><h2>Nouvelle livraison</h2></div></header>
     <form class="task-form creator-form" id="deliveryForm">
       <label class="wide">Commande à livrer<select id="deliveryOrderSelect" name="orderId" required><option value="">Choisir une commande</option>${orders.map((order) => `<option value="${order.id}">${escapeHtml(order.title)}</option>`).join("")}</select></label>
-      <label class="wide">Destinataire<select id="deliveryContactSelect" name="contactId"><option value="">Nouveau destinataire</option>${state.addressBook.map((contact) => `<option value="${contact.id}">${escapeHtml(contactFullName(contact))}${contact.city ? ` · ${escapeHtml(contact.city)}` : ""}</option>`).join("")}</select></label>
+      <section class="contact-autocomplete wide">
+        <label>Destinataire<input id="deliveryContactSearch" type="search" placeholder="Avi, Rebibo, Neuilly, 06..." autocomplete="off"></label>
+        <input id="deliveryContactId" name="contactId" type="hidden">
+        <div class="contact-suggestions" id="deliveryContactSuggestions"></div>
+      </section>
       <section class="stuart-form wide">
         <label>Titre<input id="deliveryTitle" name="title" required placeholder="Livraison Mr Benhamou"></label>
         <label>Assigné à<select name="assignee">${members.map((member) => `<option ${member.name === "Steven" ? "selected" : ""}>${member.name}</option>`).join("")}</select></label>
@@ -876,7 +951,7 @@ function openDeliveryCreator() {
       <button class="primary-action visible wide" type="submit">Valider la livraison</button>
     </form>`;
   document.querySelector("#deliveryOrderSelect").addEventListener("change", syncDeliveryOrderFields);
-  document.querySelector("#deliveryContactSelect").addEventListener("change", syncDeliveryContactFields);
+  bindDeliveryContactSearch();
   document.querySelector("#deliveryForm").addEventListener("submit", createDeliveryTask);
   el.taskDialog.showModal();
 }
@@ -889,12 +964,48 @@ function syncDeliveryOrderFields() {
   document.querySelector("#deliveryOrderPreview").innerHTML = `<strong>Commande chargée</strong><span>${escapeHtml(order.status)} · assignée à ${escapeHtml(order.assignee)} par ${escapeHtml(order.createdBy)}</span>${order.products?.length ? `<div>${order.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}`;
 }
 
-function syncDeliveryContactFields() {
-  const contact = state.addressBook.find((item) => item.id === document.querySelector("#deliveryContactSelect").value);
+function bindDeliveryContactSearch() {
+  const input = document.querySelector("#deliveryContactSearch");
+  input.addEventListener("input", () => renderDeliveryContactSuggestions(input.value));
+  renderDeliveryContactSuggestions("");
+}
+
+function renderDeliveryContactSuggestions(query) {
+  const target = document.querySelector("#deliveryContactSuggestions");
+  if (!target) return;
+  const normalized = normalizeSearch(query);
+  const contacts = activeContacts().filter((contact) => !normalized || contactSearchText(contact).includes(normalized)).slice(0, 5);
+  target.innerHTML = `${contacts.map((contact) => `<button data-pick-contact="${contact.id}" type="button"><strong>${escapeHtml(contactFullName(contact))}</strong><span>${escapeHtml([contact.company, contact.city, contact.phone].filter(Boolean).join(" · "))}</span></button>`).join("")}<button class="create-contact-suggestion" id="quickCreateContact" type="button">+ Créer nouveau destinataire</button>`;
+  target.querySelectorAll("[data-pick-contact]").forEach((button) => button.addEventListener("click", () => syncDeliveryContactFields(button.dataset.pickContact)));
+  target.querySelector("#quickCreateContact").addEventListener("click", saveDeliveryContactFromForm);
+}
+
+function syncDeliveryContactFields(contactId) {
+  const contact = state.addressBook.find((item) => item.id === contactId);
   if (!contact) return;
+  document.querySelector("#deliveryContactId").value = contact.id;
+  document.querySelector("#deliveryContactSearch").value = `${contactFullName(contact)}${contact.city ? ` · ${contact.city}` : ""}`;
   document.querySelectorAll("[data-contact-field]").forEach((input) => {
     input.value = contact[input.dataset.contactField] || "";
   });
+  renderDeliveryContactSuggestions(document.querySelector("#deliveryContactSearch").value);
+}
+
+function saveDeliveryContactFromForm() {
+  const formElement = document.querySelector("#deliveryForm");
+  if (!formElement) return;
+  const form = new FormData(formElement);
+  const contact = contactFromForm(form);
+  if (!contact.firstName && !contact.lastName && !contact.company) {
+    showToast("Ajoutez au moins un nom ou une société");
+    return;
+  }
+  upsertContact(contact);
+  document.querySelector("#deliveryContactId").value = contact.id;
+  document.querySelector("#deliveryContactSearch").value = `${contactFullName(contact)}${contact.city ? ` · ${contact.city}` : ""}`;
+  addActivity(`${CURRENT_USER} a créé le destinataire ${contactFullName(contact)}`);
+  renderDeliveryContactSuggestions(document.querySelector("#deliveryContactSearch").value);
+  showToast("Destinataire ajouté au carnet");
 }
 
 function createDeliveryTask(event) {
@@ -906,6 +1017,7 @@ function createDeliveryTask(event) {
     return;
   }
   const deliveryContact = {
+    id: form.get("contactId") || "",
     firstName: form.get("firstName") || "",
     lastName: form.get("lastName") || "",
     company: form.get("company") || "",
@@ -1078,6 +1190,7 @@ async function createStuartDelivery(item, testMode = false) {
     button.textContent = testMode ? "Test en cours..." : "Création Stuart...";
   }
   try {
+    if (!testMode) validateStuartContact(item.deliveryContact || {});
     const scheduledAt = item.dueDate ? new Date(`${item.dueDate}T${item.dueTime || "12:00"}`).toISOString() : null;
     const payload = {
       task_id: item.id,
@@ -1124,6 +1237,13 @@ async function createStuartDelivery(item, testMode = false) {
     showToast(`Erreur Stuart : ${item.stuartError}`);
     openTask(item.id);
   }
+}
+
+function validateStuartContact(contact) {
+  if (!contact.phone) throw new Error("Téléphone manquant pour créer la livraison Stuart.");
+  if (!contact.address) throw new Error("Adresse incomplète.");
+  if (!contact.postcode) throw new Error("Code postal manquant.");
+  if (!contact.city) throw new Error("Ville manquante.");
 }
 
 function extractStuartCourse(data) {
@@ -1337,6 +1457,89 @@ function openMember(id) {
   el.memberDialog.showModal();
 }
 
+function openContactEditor(id = "") {
+  if (!requireIdentity()) return;
+  const contact = id ? state.addressBook.find((item) => item.id === id) : normalizeContact({});
+  if (!contact) return;
+  el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">Carnet d’adresses</p><h2>${id ? "Modifier contact" : "Nouveau contact"}</h2></div></header>
+    <form class="task-form creator-form contact-form" id="contactForm">
+      <input type="hidden" name="id" value="${escapeHtml(contact.id)}">
+      ${contactFieldsMarkup(contact)}
+      <button class="primary-action visible wide" type="submit">${id ? "Enregistrer" : "Créer le contact"}</button>
+    </form>`;
+  document.querySelector("#contactForm").addEventListener("submit", saveContactFromEditor);
+  el.taskDialog.showModal();
+}
+
+function contactFieldsMarkup(contact = {}) {
+  return `<label>Prénom<input name="firstName" value="${escapeHtml(contact.firstName || "")}" autocomplete="given-name"></label>
+    <label>Nom<input name="lastName" value="${escapeHtml(contact.lastName || "")}" autocomplete="family-name"></label>
+    <label>Société<input name="company" value="${escapeHtml(contact.company || "")}"></label>
+    <label>Téléphone<input name="phone" value="${escapeHtml(contact.phone || "")}" inputmode="tel" autocomplete="tel"></label>
+    <label class="wide">Adresse<input name="address" value="${escapeHtml(contact.address || "")}" autocomplete="street-address"></label>
+    <label>Complément<input name="address2" value="${escapeHtml(contact.address2 || "")}"></label>
+    <label>Code postal<input name="postcode" value="${escapeHtml(contact.postcode || "")}" inputmode="numeric" autocomplete="postal-code"></label>
+    <label>Ville<input name="city" value="${escapeHtml(contact.city || "")}" autocomplete="address-level2"></label>
+    <label>Digicode<input name="accessCode" value="${escapeHtml(contact.accessCode || "")}"></label>
+    <label>Étage<input name="floor" value="${escapeHtml(contact.floor || "")}"></label>
+    <label>Ascenseur<select name="elevator"><option value="">À préciser</option><option ${contact.elevator === "Oui" ? "selected" : ""}>Oui</option><option ${contact.elevator === "Non" ? "selected" : ""}>Non</option></select></label>
+    <label class="wide">Instructions livreur<textarea name="courierInstructions">${escapeHtml(contact.courierInstructions || "")}</textarea></label>
+    <label class="wide">Notes internes<textarea name="internalNotes">${escapeHtml(contact.internalNotes || "")}</textarea></label>`;
+}
+
+function contactFromForm(form, existing = {}) {
+  const elevator = form.get("elevator") || "";
+  return normalizeContact({
+    ...existing,
+    id: form.get("id") || existing.id,
+    firstName: form.get("firstName") || "",
+    lastName: form.get("lastName") || "",
+    company: form.get("company") || "",
+    phone: form.get("phone") || "",
+    address: form.get("address") || "",
+    address2: form.get("address2") || "",
+    postcode: form.get("postcode") || "",
+    city: form.get("city") || "",
+    accessCode: form.get("accessCode") || "",
+    floor: form.get("floor") || "",
+    elevator,
+    hasElevator: elevator === "Oui" ? true : elevator === "Non" ? false : null,
+    courierInstructions: form.get("courierInstructions") || "",
+    internalNotes: form.get("internalNotes") || "",
+    updatedAt: new Date().toISOString()
+  });
+}
+
+function saveContactFromEditor(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const existing = state.addressBook.find((item) => item.id === form.get("id")) || {};
+  const contact = contactFromForm(form, existing);
+  upsertContact(contact);
+  addActivity(`${CURRENT_USER} a ${existing.id ? "modifié" : "créé"} le contact ${contactFullName(contact)}`);
+  el.taskDialog.close();
+  showToast("Contact enregistré");
+}
+
+function upsertContact(contact) {
+  const index = state.addressBook.findIndex((item) => item.id === contact.id);
+  if (index >= 0) state.addressBook[index] = contact;
+  else state.addressBook.unshift(contact);
+  save();
+  renderAddressBook();
+  syncContact(contact);
+}
+
+function archiveContact(id) {
+  const contact = state.addressBook.find((item) => item.id === id);
+  if (!contact || !confirm(`Archiver ${contactFullName(contact)} ?`)) return;
+  contact.archivedAt = new Date().toISOString();
+  contact.updatedAt = contact.archivedAt;
+  upsertContact(contact);
+  addActivity(`${CURRENT_USER} a archivé le contact ${contactFullName(contact)}`);
+  showToast("Contact archivé");
+}
+
 function bindGlobal() {
   document.addEventListener("click", (event) => {
     const open = event.target.closest("[data-open-task]");
@@ -1351,6 +1554,10 @@ function bindGlobal() {
     if (reminder) { event.stopPropagation(); remindTask(reminder.dataset.remind); return; }
     const newDelivery = event.target.closest("[data-new-delivery]");
     if (newDelivery) { event.stopPropagation(); openDeliveryCreator(); return; }
+    const editContact = event.target.closest("[data-edit-contact]");
+    if (editContact) { event.stopPropagation(); openContactEditor(editContact.dataset.editContact); return; }
+    const archiveContactButton = event.target.closest("[data-archive-contact]");
+    if (archiveContactButton) { event.stopPropagation(); archiveContact(archiveContactButton.dataset.archiveContact); return; }
     const member = event.target.closest("[data-member]");
     if (member) { event.stopPropagation(); el.searchResults.hidden = true; openMember(member.dataset.member); return; }
     const view = event.target.closest("[data-open-view]");
@@ -1369,6 +1576,8 @@ function bindGlobal() {
   document.querySelector("#sidebarToggle").addEventListener("click", () => document.body.classList.toggle("sidebar-collapsed"));
   document.querySelector("#enablePushButton").addEventListener("click", enablePush);
   document.querySelector("#changeProfileButton").addEventListener("click", changeProfile);
+  document.querySelector("#newContactButton")?.addEventListener("click", () => openContactEditor());
+  el.addressSearch?.addEventListener("input", renderAddressBook);
   el.profileGate.addEventListener("cancel", (event) => event.preventDefault());
   el.avatarUpload.addEventListener("change", updateAvatar);
   el.globalSearch.addEventListener("input", () => {
@@ -1605,10 +1814,11 @@ async function initializeSupabase() {
       auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    const [{ data: remoteTasks, error: taskError }, { data: remoteActivity, error: activityError }, { data: remoteProfiles, error: profileError }] = await Promise.all([
+    const [{ data: remoteTasks, error: taskError }, { data: remoteActivity, error: activityError }, { data: remoteProfiles, error: profileError }, { data: remoteContacts, error: contactError }] = await Promise.all([
       supabaseClient.from("hub_tasks").select("id,data,updated_at").order("updated_at", { ascending: false }),
       supabaseClient.from("hub_activity").select("id,event_time,text,created_at").order("created_at", { ascending: false }).limit(1000),
-      supabaseClient.from("hub_profiles").select("id,avatar_url,updated_at")
+      supabaseClient.from("hub_profiles").select("id,avatar_url,updated_at"),
+      supabaseClient.from("address_book").select("*").order("updated_at", { ascending: false })
     ]);
     if (taskError || activityError) throw taskError || activityError;
 
@@ -1623,6 +1833,11 @@ async function initializeSupabase() {
     if (remoteActivity.length) {
       state.activity = remoteActivity.map((row) => ({ id: row.id, time: row.event_time, text: row.text, createdAt: new Date(row.created_at).getTime() }));
     }
+    if (!contactError && remoteContacts?.length) {
+      state.addressBook = remoteContacts.map(contactFromRow);
+    } else if (!contactError) {
+      await Promise.all(activeContacts().map(syncContact));
+    }
     fallbackProfiles.forEach((row) => { if (row.data?.avatar) state.avatars[row.data.profileId] = row.data.avatar; });
     (remoteProfiles || []).forEach((profile) => { if (profile.avatar_url) state.avatars[profile.id] = profile.avatar_url; });
     const knownProfileIds = new Set([...fallbackProfiles.map((row) => row.data?.profileId), ...(remoteProfiles || []).map((profile) => profile.id)]);
@@ -1635,9 +1850,11 @@ async function initializeSupabase() {
       .on("broadcast", { event: "task_changed" }, applyBroadcastTask)
       .on("broadcast", { event: "activity_added" }, applyBroadcastActivity)
       .on("broadcast", { event: "profile_changed" }, applyBroadcastProfile)
+      .on("broadcast", { event: "contact_changed" }, applyBroadcastContact)
       .on("postgres_changes", { event: "*", schema: "public", table: "hub_tasks" }, applyRemoteTask)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "hub_activity" }, applyRemoteActivity);
     if (!profileError) realtimeChannel.on("postgres_changes", { event: "*", schema: "public", table: "hub_profiles" }, applyRemoteProfile);
+    if (!contactError) realtimeChannel.on("postgres_changes", { event: "*", schema: "public", table: "address_book" }, applyRemoteContact);
     realtimeChannel.subscribe(async (status) => {
       setSyncState(status === "SUBSCRIBED" ? "Temps réel" : "Connexion...", status === "SUBSCRIBED");
       if (status === "SUBSCRIBED" && profilesToMigrate.length) await Promise.all(profilesToMigrate.map(([id, avatar]) => syncProfileFallback(id, avatar)));
@@ -1664,6 +1881,40 @@ async function syncActivity(event) {
   const { error } = await supabaseClient.from("hub_activity").upsert({ id: event.id, event_time: event.time, text: event.text, created_by: memberIdForName(CURRENT_USER || "system") });
   if (error) setSyncState("Hors ligne", false);
   else broadcastChange("activity_added", { activity: event });
+}
+
+function contactRow(contact) {
+  const normalized = normalizeContact(contact);
+  return {
+    id: normalized.id,
+    first_name: normalized.firstName,
+    last_name: normalized.lastName,
+    company: normalized.company,
+    phone: normalized.phone,
+    address: normalized.address,
+    address_extra: normalized.address2,
+    postal_code: normalized.postcode,
+    city: normalized.city,
+    access_code: normalized.accessCode,
+    floor: normalized.floor,
+    has_elevator: normalized.hasElevator,
+    delivery_instructions: normalized.courierInstructions,
+    internal_notes: normalized.internalNotes,
+    archived_at: normalized.archivedAt,
+    updated_by: memberIdForName(CURRENT_USER || "system"),
+    created_by: memberIdForName(CURRENT_USER || "system")
+  };
+}
+
+function contactFromRow(row) {
+  return normalizeContact(row);
+}
+
+async function syncContact(contact) {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.from("address_book").upsert(contactRow(contact));
+  if (error) setSyncState("Hors ligne", false);
+  else broadcastChange("contact_changed", { contact });
 }
 
 async function syncProfileFallback(profileId, avatar) {
@@ -1693,6 +1944,11 @@ function applyBroadcastActivity({ payload }) {
 function applyBroadcastProfile({ payload }) {
   if (!payload?.profile || payload.source === CLIENT_ID) return;
   applyRemoteProfile({ new: payload.profile });
+}
+
+function applyBroadcastContact({ payload }) {
+  if (!payload?.contact || payload.source === CLIENT_ID) return;
+  applyRemoteContact({ eventType: "UPDATE", new: contactRow(payload.contact), old: {} });
 }
 
 function applyRemoteTask(payload) {
@@ -1735,6 +1991,21 @@ function applyRemoteProfile(payload) {
   else delete state.avatars[row.id];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   render();
+}
+
+function applyRemoteContact(payload) {
+  const row = payload.new || payload.old;
+  if (!row?.id) return;
+  const index = state.addressBook.findIndex((contact) => contact.id === row.id);
+  if (payload.eventType === "DELETE") {
+    if (index >= 0) state.addressBook.splice(index, 1);
+  } else {
+    const contact = contactFromRow(row);
+    if (index >= 0) state.addressBook[index] = contact;
+    else state.addressBook.unshift(contact);
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAddressBook();
 }
 
 function setSyncState(label, online) {

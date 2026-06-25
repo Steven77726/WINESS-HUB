@@ -87,6 +87,30 @@ create table if not exists public.stuart_api_logs (
 create index if not exists stuart_api_logs_task_id_idx on public.stuart_api_logs (task_id);
 create index if not exists stuart_api_logs_created_at_idx on public.stuart_api_logs (created_at desc);
 
+create table if not exists public.address_book (
+  id text primary key,
+  first_name text,
+  last_name text,
+  company text,
+  phone text,
+  address text,
+  address_extra text,
+  postal_code text,
+  city text,
+  access_code text,
+  floor text,
+  has_elevator boolean,
+  delivery_instructions text,
+  internal_notes text,
+  created_by text not null default 'unknown',
+  updated_by text not null default 'unknown',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  archived_at timestamptz
+);
+create index if not exists address_book_city_idx on public.address_book (city);
+create index if not exists address_book_archived_at_idx on public.address_book (archived_at);
+
 create or replace function public.set_hub_updated_at()
 returns trigger
 language plpgsql
@@ -113,11 +137,17 @@ create trigger stuart_oauth_tokens_updated_at
 before update on public.stuart_oauth_tokens
 for each row execute function public.set_hub_updated_at();
 
+drop trigger if exists address_book_updated_at on public.address_book;
+create trigger address_book_updated_at
+before update on public.address_book
+for each row execute function public.set_hub_updated_at();
+
 alter table public.hub_tasks enable row level security;
 alter table public.hub_activity enable row level security;
 alter table public.hub_profiles enable row level security;
 alter table public.stuart_oauth_tokens enable row level security;
 alter table public.stuart_api_logs enable row level security;
+alter table public.address_book enable row level security;
 
 -- Mode pilote sans compte utilisateur. A remplacer par des règles Supabase Auth
 -- avant de stocker des informations clients sensibles.
@@ -152,6 +182,13 @@ grant update (avatar_url, updated_by) on public.hub_profiles to anon, authentica
 revoke all on public.stuart_oauth_tokens from anon, authenticated;
 revoke all on public.stuart_api_logs from anon, authenticated;
 
+drop policy if exists "pilot_read_address_book" on public.address_book;
+create policy "pilot_read_address_book" on public.address_book for select to anon, authenticated using (true);
+drop policy if exists "pilot_write_address_book" on public.address_book;
+create policy "pilot_write_address_book" on public.address_book for insert to anon, authenticated with check (true);
+drop policy if exists "pilot_update_address_book" on public.address_book;
+create policy "pilot_update_address_book" on public.address_book for update to anon, authenticated using (true) with check (true);
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('avatars', 'avatars', true, 5242880, array['image/jpeg','image/png','image/webp','image/heic','image/heif'])
 on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
@@ -166,6 +203,7 @@ create policy "pilot_update_avatars" on storage.objects for update to anon, auth
 alter table public.hub_tasks replica identity full;
 alter table public.hub_activity replica identity full;
 alter table public.hub_profiles replica identity full;
+alter table public.address_book replica identity full;
 
 do $$
 begin
@@ -182,5 +220,11 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.hub_activity;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.address_book;
 exception when duplicate_object then null;
 end $$;

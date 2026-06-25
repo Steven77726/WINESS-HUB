@@ -1264,6 +1264,89 @@ h1 {
   gap: 10px;
 }
 .stuart-result a { color: #ffd98a; text-decoration: none; }
+.address-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.address-toolbar input,
+.contact-autocomplete input {
+  min-height: 48px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(17,24,39,.72);
+  padding: 0 14px;
+  outline: none;
+}
+.address-toolbar input:focus,
+.contact-autocomplete input:focus {
+  border-color: rgba(246,183,60,.45);
+  box-shadow: 0 0 0 3px rgba(246,183,60,.12);
+}
+.address-list { gap: 10px; }
+.contact-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 22px;
+  background: rgba(17,24,39,.66);
+}
+.contact-main {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.contact-main strong { color: #fff; }
+.contact-main span { color: #d1d5db; font-size: 13px; }
+.contact-main small { color: #9ca3af; font-size: 12px; }
+.contact-actions {
+  display: flex;
+  gap: 7px;
+}
+.contact-actions button {
+  min-height: 36px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  color: #e5e7eb;
+  background: rgba(255,255,255,.055);
+}
+.contact-autocomplete {
+  display: grid;
+  gap: 8px;
+}
+.contact-suggestions {
+  display: grid;
+  gap: 7px;
+}
+.contact-suggestions button {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  color: #fff;
+  background: rgba(6,9,15,.46);
+  padding: 10px 12px;
+  text-align: left;
+}
+.contact-suggestions span {
+  color: #9ca3af;
+  font-size: 12px;
+}
+.contact-suggestions .create-contact-suggestion {
+  color: #ffd98a;
+  background: rgba(246,183,60,.1);
+  font-weight: 900;
+}
 .delivery-products, .delivery-order-preview {
   display: grid;
   gap: 5px;
@@ -1292,6 +1375,9 @@ h1 {
   .product-row { grid-template-columns: 1fr; }
   .remove-product { justify-self: end; }
   .stuart-form, .delivery-grid, .stuart-actions { grid-template-columns: 1fr; }
+  .address-toolbar, .contact-card { grid-template-columns: 1fr; }
+  .contact-actions { width: 100%; }
+  .contact-actions button { flex: 1; }
 }
 
 /* Rubriques métier V280 */
