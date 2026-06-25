@@ -9,8 +9,8 @@
     <title>Winess Hub</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/winess-icon.svg">
-    <link rel="stylesheet" href="styles.css?v=298">
-    <script type="module" src="app.js?v=298"></script>
+    <link rel="stylesheet" href="styles.css?v=299">
+    <script type="module" src="app.js?v=299"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -44,7 +44,18 @@
       <main class="workspace">
         <section class="iphone-help" id="iphoneHelp" aria-live="polite"></section>
         <section class="global-search" role="search">
-          <input id="globalSearch" type="search" placeholder="Rechercher une tâche, un client, un devis..." autocomplete="off" aria-label="Recherche globale">
+          <input id="globalSearch" type="search" placeholder="🔍 Rechercher une tâche, un client, un collaborateur, une commande..." autocomplete="off" aria-label="Recherche globale">
+          <div class="search-filters" id="searchFilters" aria-label="Filtres recherche">
+            <button class="is-active" data-search-filter="all" type="button">Tout</button>
+            <button data-search-filter="active" type="button">En cours</button>
+            <button data-search-filter="done" type="button">Terminées</button>
+            <button data-search-filter="archived" type="button">Archivées</button>
+            <button data-search-filter="urgent" type="button">Urgentes</button>
+            <button data-search-filter="livraison" type="button">Livraisons</button>
+            <button data-search-filter="commandes" type="button">Commandes</button>
+            <button data-search-filter="inventaire" type="button">Inventaire</button>
+            <button data-search-filter="litige" type="button">Litiges</button>
+          </div>
           <div class="search-results" id="searchResults" hidden></div>
         </section>
 

@@ -52,6 +52,8 @@ let selectedAvatar = "";
 let openedTaskId = "";
 let toastTimer = 0;
 let homeExpiryTimer = 0;
+let activeSearchFilter = "all";
+let searchInputTimer = 0;
 
 const el = {
   direction: document.querySelector("#directionGrid"),
@@ -74,6 +76,7 @@ const el = {
   rubricList: document.querySelector("#rubricList"),
   syncState: document.querySelector("#syncState"),
   globalSearch: document.querySelector("#globalSearch"),
+  searchFilters: document.querySelector("#searchFilters"),
   searchResults: document.querySelector("#searchResults"),
   toast: document.querySelector("#appToast"),
   profileGate: document.querySelector("#profileGate"),
@@ -483,12 +486,121 @@ function renderSearchResults(query) {
     el.searchResults.innerHTML = "";
     return;
   }
-  const results = state.tasks.filter((item) => !isDeleted(item)).filter((item) => {
-    const haystack = [item.title, item.notes, item.assignee, item.createdBy, item.client, item.status, item.priority, typeLabel(item), item.amount].join(" ");
-    return normalizeSearch(haystack).includes(normalized);
-  }).slice(0, 10);
-  el.searchResults.innerHTML = results.map((item) => `<button class="search-result" data-open-task="${item.id}" type="button"><strong>${item.title}</strong><span>${typeLabel(item)} · ${item.assignee} · ${isDeleted(item) ? "Supprimée" : item.status}</span></button>`).join("") || `<span class="empty-state">Aucun résultat.</span>`;
+  const taskMatches = new Map();
+  state.tasks.filter((item) => !isDeleted(item)).forEach((item) => {
+    if (matchesSearch(item, normalized) && matchesSearchFilter(item)) taskMatches.set(item.id, item);
+  });
+  state.activity.forEach((event) => {
+    if (!normalizeSearch([event.text, event.time].join(" ")).includes(normalized)) return;
+    const linked = findTaskFromActivity(event.text);
+    if (linked && matchesSearchFilter(linked)) taskMatches.set(linked.id, linked);
+  });
+  const taskResults = [...taskMatches.values()].sort(compareSearchTasks).slice(0, 14);
+  const memberResults = members.filter((member) => {
+    if (activeSearchFilter !== "all") return false;
+    return normalizeSearch([member.name, member.role, member.id].join(" ")).includes(normalized);
+  }).slice(0, 3);
+  const activityResults = state.activity.filter((event) => {
+    if (activeSearchFilter !== "all") return false;
+    if (findTaskFromActivity(event.text)) return false;
+    return normalizeSearch([event.text, event.time].join(" ")).includes(normalized);
+  }).slice(0, 3);
+  el.searchResults.innerHTML = [
+    ...taskResults.map(searchTaskResult),
+    ...memberResults.map(searchMemberResult),
+    ...activityResults.map(searchActivityResult)
+  ].join("") || `<span class="empty-state">Aucun résultat.</span>`;
   el.searchResults.hidden = false;
+}
+
+function matchesSearch(item, normalized) {
+  return normalizeSearch(searchableTaskText(item)).includes(normalized);
+}
+
+function searchableTaskText(item) {
+  return [
+    item.title,
+    item.description,
+    item.notes,
+    item.comments,
+    item.commentaires,
+    item.assignee,
+    item.assignedTo,
+    item.createdBy,
+    item.assignedBy,
+    item.client,
+    item.customer,
+    item.supplier,
+    item.fournisseur,
+    item.address,
+    item.adresse,
+    item.phone,
+    item.telephone,
+    item.orderRef,
+    item.reference,
+    item.status,
+    item.priority,
+    item.missionType,
+    typeLabel(item),
+    item.amount,
+    (item.history || []).join(" "),
+    state.activity.filter((event) => event.text?.includes(item.title)).map((event) => `${event.time} ${event.text}`).join(" ")
+  ].filter(Boolean).join(" ");
+}
+
+function matchesSearchFilter(item) {
+  if (activeSearchFilter === "active") return !isArchived(item);
+  if (activeSearchFilter === "done") return isCompleted(item);
+  if (activeSearchFilter === "archived") return isArchived(item);
+  if (activeSearchFilter === "urgent") return item.priority?.includes("Urgente") && !isCompleted(item);
+  if (activeSearchFilter === "livraison") return item.missionType === "livraison";
+  if (activeSearchFilter === "commandes") return ["preparation", "fournisseur"].includes(item.missionType);
+  if (activeSearchFilter === "inventaire") return item.missionType === "inventaire";
+  if (activeSearchFilter === "litige") return item.missionType === "litige";
+  return true;
+}
+
+function compareSearchTasks(left, right) {
+  const rankDifference = searchTaskRank(left) - searchTaskRank(right);
+  if (rankDifference) return rankDifference;
+  const leftTime = new Date(left.completedAt || left.updatedAt || left.createdAt || 0).getTime();
+  const rightTime = new Date(right.completedAt || right.updatedAt || right.createdAt || 0).getTime();
+  return rightTime - leftTime;
+}
+
+function searchTaskRank(item) {
+  if (!isCompleted(item) && item.priority?.includes("Urgente")) return 0;
+  if (!isCompleted(item) && isInitialStatus(item)) return 1;
+  if (!isCompleted(item)) return 2;
+  const finalKind = finalStatusKind(item.status);
+  if (!isRecentlyCompleted(item)) return 7;
+  if (finalKind === "recovered") return 4;
+  if (finalKind === "delivered") return 5;
+  return 3;
+}
+
+function findTaskFromActivity(text) {
+  const normalized = normalizeSearch(text);
+  return state.tasks.find((item) => item.id && normalized.includes(normalizeSearch(item.id))) ||
+    state.tasks.find((item) => item.title && normalized.includes(normalizeSearch(item.title)));
+}
+
+function searchTaskResult(item) {
+  const done = isCompleted(item);
+  const archiveLabel = isArchived(item) && !isRecentlyCompleted(item) ? " · Archives" : "";
+  return `<button class="search-result ${done ? "is-done" : ""}" data-open-task="${item.id}" type="button">
+    <strong>${done ? `<s>${escapeHtml(item.title)}</s>` : escapeHtml(item.title)}</strong>
+    <span>Assigné à ${escapeHtml(item.assignee || "À préciser")} · par ${escapeHtml(item.createdBy || "À préciser")}</span>
+    <small>${escapeHtml(typeLabel(item))} · Statut : ${escapeHtml(item.status || "Attribué")}${archiveLabel}</small>
+  </button>`;
+}
+
+function searchMemberResult(member) {
+  return `<button class="search-result search-person" data-member="${member.id}" type="button"><strong>👤 ${escapeHtml(member.name)}</strong><span>Collaborateur · ${escapeHtml(member.role)}</span><small>Ouvrir sa fiche et ses tâches</small></button>`;
+}
+
+function searchActivityResult(event) {
+  return `<button class="search-result search-activity" data-open-view="activite" type="button"><strong>Activité</strong><span>${escapeHtml(event.time || "")}</span><small>${escapeHtml(event.text || "")}</small></button>`;
 }
 
 function normalizeSearch(value) {
@@ -650,7 +762,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
 }
 
 function shareTask(item) {
-  const url = `${APP_BASE_URL}index.html?v=298#task-${item.id}`;
+  const url = `${APP_BASE_URL}index.html?v=299#task-${item.id}`;
   const text = `Mission : ${item.title}\nAssigné à : ${item.assignee}\nAssigné par : ${item.createdBy}\nStatut : ${item.status}\nPriorité : ${item.priority}\nDate limite : ${formatDue(item)}\nNotes : ${item.notes || "Aucune"}\nLien : ${url}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -733,7 +845,16 @@ function bindGlobal() {
     const reminder = event.target.closest("[data-remind]");
     if (reminder) { event.stopPropagation(); remindTask(reminder.dataset.remind); return; }
     const member = event.target.closest("[data-member]");
-    if (member) openMember(member.dataset.member);
+    if (member) { event.stopPropagation(); el.searchResults.hidden = true; openMember(member.dataset.member); return; }
+    const view = event.target.closest("[data-open-view]");
+    if (view) { event.stopPropagation(); el.searchResults.hidden = true; showView(view.dataset.openView); return; }
+    const searchFilter = event.target.closest("[data-search-filter]");
+    if (searchFilter) {
+      event.stopPropagation();
+      activeSearchFilter = searchFilter.dataset.searchFilter;
+      el.searchFilters.querySelectorAll("[data-search-filter]").forEach((button) => button.classList.toggle("is-active", button === searchFilter));
+      renderSearchResults(el.globalSearch.value);
+    }
   });
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
@@ -742,7 +863,10 @@ function bindGlobal() {
   document.querySelector("#changeProfileButton").addEventListener("click", changeProfile);
   el.profileGate.addEventListener("cancel", (event) => event.preventDefault());
   el.avatarUpload.addEventListener("change", updateAvatar);
-  el.globalSearch.addEventListener("input", () => renderSearchResults(el.globalSearch.value));
+  el.globalSearch.addEventListener("input", () => {
+    clearTimeout(searchInputTimer);
+    searchInputTimer = window.setTimeout(() => renderSearchResults(el.globalSearch.value), 70);
+  });
   el.globalSearch.addEventListener("keydown", (event) => { if (event.key === "Escape") { el.globalSearch.value = ""; renderSearchResults(""); } });
   window.addEventListener("hashchange", handleHash);
   if (matchMedia("(max-width: 900px)").matches) document.body.classList.add("sidebar-collapsed");
@@ -975,7 +1099,7 @@ async function initializeSupabase() {
 
     const [{ data: remoteTasks, error: taskError }, { data: remoteActivity, error: activityError }, { data: remoteProfiles, error: profileError }] = await Promise.all([
       supabaseClient.from("hub_tasks").select("id,data,updated_at").order("updated_at", { ascending: false }),
-      supabaseClient.from("hub_activity").select("id,event_time,text,created_at").order("created_at", { ascending: false }).limit(100),
+      supabaseClient.from("hub_activity").select("id,event_time,text,created_at").order("created_at", { ascending: false }).limit(1000),
       supabaseClient.from("hub_profiles").select("id,avatar_url,updated_at")
     ]);
     if (taskError || activityError) throw taskError || activityError;
