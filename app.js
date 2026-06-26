@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "311";
+const APP_VERSION = "312";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -297,6 +297,11 @@ function normalizeContact(contact = {}) {
     address2: contact.address2 || contact.address_extra || "",
     postcode: contact.postcode || contact.postal_code || "",
     city: contact.city || "",
+    country: contact.country || "France",
+    latitude: Number(contact.latitude || contact.lat || 0) || null,
+    longitude: Number(contact.longitude || contact.lon || contact.lng || 0) || null,
+    addressLabel: contact.addressLabel || contact.address_label || "",
+    addressSelected: Boolean(contact.addressSelected || contact.address_selected),
     accessCode: contact.accessCode || contact.access_code || "",
     floor: contact.floor || "",
     elevator: hasElevator === true ? "Oui" : hasElevator === false ? "Non" : contact.elevator || "",
@@ -819,6 +824,62 @@ function normalizeSearch(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
+function bindAddressAutocomplete(root) {
+  const input = root?.querySelector("[data-address-input]");
+  const suggestions = root?.querySelector(".address-suggestions");
+  if (!input || !suggestions) return;
+  let timer = 0;
+  input.addEventListener("input", () => {
+    root.querySelector('[name="addressSelected"]').value = "";
+    root.querySelector('[name="latitude"]').value = "";
+    root.querySelector('[name="longitude"]').value = "";
+    root.querySelector('[name="addressLabel"]').value = "";
+    clearTimeout(timer);
+    timer = window.setTimeout(() => renderAddressSuggestions(root, input.value), 220);
+  });
+}
+
+async function renderAddressSuggestions(root, query) {
+  const suggestions = root.querySelector(".address-suggestions");
+  if (!suggestions) return;
+  const value = query.trim();
+  if (value.length < 3) {
+    suggestions.innerHTML = "";
+    return;
+  }
+  try {
+    const response = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(value)}&limit=5&type=housenumber&lat=48.8792&lon=2.2941`);
+    if (!response.ok) throw new Error("Adresse indisponible");
+    const data = await response.json();
+    const features = data.features || [];
+    suggestions.innerHTML = features.map((feature, index) => {
+      const label = feature.properties?.label || "";
+      return `<button data-address-index="${index}" type="button">${escapeHtml(label)}</button>`;
+    }).join("") || `<span>Aucune adresse trouvée.</span>`;
+    suggestions.querySelectorAll("[data-address-index]").forEach((button) => {
+      button.addEventListener("click", () => applyAddressSuggestion(root, features[Number(button.dataset.addressIndex)]));
+    });
+  } catch {
+    suggestions.innerHTML = `<span>Impossible de rechercher l’adresse.</span>`;
+  }
+}
+
+function applyAddressSuggestion(root, feature) {
+  const properties = feature?.properties || {};
+  const coordinates = feature?.geometry?.coordinates || [];
+  const address = properties.name || properties.label || "";
+  root.querySelector('[name="address"]').value = address;
+  root.querySelector('[name="postcode"]').value = properties.postcode || "";
+  root.querySelector('[name="city"]').value = properties.city || "";
+  root.querySelector('[name="country"]').value = "France";
+  root.querySelector('[name="longitude"]').value = coordinates[0] || "";
+  root.querySelector('[name="latitude"]').value = coordinates[1] || "";
+  root.querySelector('[name="addressLabel"]').value = properties.label || address;
+  root.querySelector('[name="addressSelected"]').value = "1";
+  const suggestions = root.querySelector(".address-suggestions");
+  if (suggestions) suggestions.innerHTML = `<span>Adresse sélectionnée : ${escapeHtml(properties.label || address)}</span>`;
+}
+
 function bindRendered() {
   // Dynamic controls are handled once through event delegation in bindGlobal.
 }
@@ -956,10 +1017,15 @@ function openDeliveryCreator() {
         <label>Nom<input name="lastName" data-contact-field="lastName"></label>
         <label>Entreprise<input name="company" data-contact-field="company"></label>
         <label>Téléphone<input name="phone" data-contact-field="phone" inputmode="tel"></label>
-        <label class="wide">Adresse<input name="address" data-contact-field="address" placeholder="Adresse complète"></label>
+        <label class="wide address-smart">Adresse<input name="address" data-contact-field="address" data-address-input placeholder="42 rue des aca" autocomplete="off"><div class="address-suggestions"></div></label>
         <label>Complément<input name="address2" data-contact-field="address2"></label>
         <label>Code postal<input name="postcode" data-contact-field="postcode" inputmode="numeric"></label>
         <label>Ville<input name="city" data-contact-field="city"></label>
+        <input name="country" data-contact-field="country" type="hidden">
+        <input name="latitude" data-contact-field="latitude" type="hidden">
+        <input name="longitude" data-contact-field="longitude" type="hidden">
+        <input name="addressLabel" data-contact-field="addressLabel" type="hidden">
+        <input name="addressSelected" data-contact-field="addressSelected" type="hidden">
         <label>Digicode<input name="accessCode" data-contact-field="accessCode"></label>
         <label>Étage<input name="floor" data-contact-field="floor"></label>
         <label>Ascenseur<select name="elevator" data-contact-field="elevator"><option value="">À préciser</option><option>Oui</option><option>Non</option></select></label>
@@ -980,6 +1046,7 @@ function openDeliveryCreator() {
     </form>`;
   document.querySelector("#deliveryOrderSelect").addEventListener("change", syncDeliveryOrderFields);
   bindDeliveryContactSearch();
+  bindAddressAutocomplete(document.querySelector("#deliveryForm"));
   document.querySelector("#deliveryForm").addEventListener("submit", createDeliveryTask);
   el.taskDialog.showModal();
 }
@@ -1054,6 +1121,11 @@ function createDeliveryTask(event) {
     address2: form.get("address2") || "",
     postcode: form.get("postcode") || "",
     city: form.get("city") || "",
+    country: form.get("country") || "France",
+    latitude: form.get("latitude") || null,
+    longitude: form.get("longitude") || null,
+    addressLabel: form.get("addressLabel") || "",
+    addressSelected: form.get("addressSelected") === "1",
     accessCode: form.get("accessCode") || "",
     floor: form.get("floor") || "",
     elevator: form.get("elevator") || "",
@@ -1397,6 +1469,7 @@ function validateStuartContact(contact) {
   if (!contact.address) throw new Error("Adresse incomplète.");
   if (!contact.postcode) throw new Error("Code postal manquant.");
   if (!contact.city) throw new Error("Ville manquante.");
+  if (!contact.addressSelected && !contact.latitude && !contact.longitude) throw new Error("Sélectionnez une adresse proposée pour éviter une erreur Stuart.");
 }
 
 function extractStuartCourse(data) {
@@ -1707,6 +1780,7 @@ function openContactEditor(id = "") {
       <button class="primary-action visible wide" type="submit">${id ? "Enregistrer" : "Créer le contact"}</button>
     </form>`;
   document.querySelector("#contactForm").addEventListener("submit", saveContactFromEditor);
+  bindAddressAutocomplete(document.querySelector("#contactForm"));
   el.taskDialog.showModal();
 }
 
@@ -1715,10 +1789,15 @@ function contactFieldsMarkup(contact = {}) {
     <label>Nom<input name="lastName" value="${escapeHtml(contact.lastName || "")}" autocomplete="family-name"></label>
     <label>Société<input name="company" value="${escapeHtml(contact.company || "")}"></label>
     <label>Téléphone<input name="phone" value="${escapeHtml(contact.phone || "")}" inputmode="tel" autocomplete="tel"></label>
-    <label class="wide">Adresse<input name="address" value="${escapeHtml(contact.address || "")}" autocomplete="street-address"></label>
+    <label class="wide address-smart">Adresse<input name="address" value="${escapeHtml(contact.address || "")}" data-address-input autocomplete="off" placeholder="42 rue des aca"><div class="address-suggestions"></div></label>
     <label>Complément<input name="address2" value="${escapeHtml(contact.address2 || "")}"></label>
     <label>Code postal<input name="postcode" value="${escapeHtml(contact.postcode || "")}" inputmode="numeric" autocomplete="postal-code"></label>
     <label>Ville<input name="city" value="${escapeHtml(contact.city || "")}" autocomplete="address-level2"></label>
+    <input name="country" type="hidden" value="${escapeHtml(contact.country || "France")}">
+    <input name="latitude" type="hidden" value="${escapeHtml(contact.latitude || "")}">
+    <input name="longitude" type="hidden" value="${escapeHtml(contact.longitude || "")}">
+    <input name="addressLabel" type="hidden" value="${escapeHtml(contact.addressLabel || "")}">
+    <input name="addressSelected" type="hidden" value="${contact.addressSelected ? "1" : ""}">
     <label>Digicode<input name="accessCode" value="${escapeHtml(contact.accessCode || "")}"></label>
     <label>Étage<input name="floor" value="${escapeHtml(contact.floor || "")}"></label>
     <label>Ascenseur<select name="elevator"><option value="">À préciser</option><option ${contact.elevator === "Oui" ? "selected" : ""}>Oui</option><option ${contact.elevator === "Non" ? "selected" : ""}>Non</option></select></label>
@@ -1739,6 +1818,11 @@ function contactFromForm(form, existing = {}) {
     address2: form.get("address2") || "",
     postcode: form.get("postcode") || "",
     city: form.get("city") || "",
+    country: form.get("country") || "France",
+    latitude: form.get("latitude") || null,
+    longitude: form.get("longitude") || null,
+    addressLabel: form.get("addressLabel") || "",
+    addressSelected: form.get("addressSelected") === "1",
     accessCode: form.get("accessCode") || "",
     floor: form.get("floor") || "",
     elevator,
@@ -2134,6 +2218,11 @@ function contactRow(contact) {
     address_extra: normalized.address2,
     postal_code: normalized.postcode,
     city: normalized.city,
+    country: normalized.country,
+    latitude: normalized.latitude,
+    longitude: normalized.longitude,
+    address_label: normalized.addressLabel,
+    address_selected: normalized.addressSelected,
     access_code: normalized.accessCode,
     floor: normalized.floor,
     has_elevator: normalized.hasElevator,

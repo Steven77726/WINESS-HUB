@@ -1357,6 +1357,30 @@ h1 {
   background: rgba(246,183,60,.1);
   font-weight: 900;
 }
+.address-smart {
+  position: relative;
+}
+.address-suggestions {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+.address-suggestions button,
+.address-suggestions span {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  color: #f9fafb;
+  background: rgba(6,9,15,.54);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13px;
+}
+.address-suggestions span {
+  color: #9ca3af;
+}
 .package-picker {
   display: grid;
   gap: 8px;

@@ -191,6 +191,8 @@ function buildDropoff(contact: Record<string, unknown>, payload: Record<string, 
     postcode: String(contact.postcode || contact.postal_code || ""),
     city: String(contact.city || ""),
     country: String(contact.country || "FR"),
+    latitude: numberOrUndefined(contact.latitude),
+    longitude: numberOrUndefined(contact.longitude),
     access_code: String(contact.accessCode || contact.access_code || ""),
     floor: String(contact.floor || ""),
     has_elevator: contact.elevator === "Oui" ? true : contact.elevator === "Non" ? false : undefined,
@@ -308,6 +310,11 @@ async function logStuartCall(action: string, taskId: string, createdBy: string, 
 
 function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function numberOrUndefined(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number !== 0 ? number : undefined;
 }
 
 async function readJsonSafe(response: Response) {
