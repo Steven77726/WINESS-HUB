@@ -158,6 +158,7 @@ function buildPickup(payload: Record<string, unknown>) {
 }
 
 function buildDropoff(contact: Record<string, unknown>, payload: Record<string, unknown>, packageDescription: string) {
+  const address = joinAddress(contact.address, contact.address2);
   const comments = [
     contact.courierInstructions || contact.instructions || "",
     payload.extra_instructions || "",
@@ -166,7 +167,7 @@ function buildDropoff(contact: Record<string, unknown>, payload: Record<string, 
   ].filter(Boolean).join(" · ");
   const packageType = String(payload.package_type || Deno.env.get("STUART_PACKAGE_TYPE") || "small");
   return {
-    address: String(contact.address || ""),
+    address,
     address2: String(contact.address2 || ""),
     postcode: String(contact.postcode || contact.postal_code || ""),
     city: String(contact.city || ""),
@@ -188,6 +189,13 @@ function buildDropoff(contact: Record<string, unknown>, payload: Record<string, 
       phone: String(contact.phone || ""),
     },
   };
+}
+
+function joinAddress(address: unknown, address2: unknown) {
+  const main = String(address || "").trim();
+  const extra = String(address2 || "").trim();
+  if (/^\d+[a-zA-Z]?$/.test(main) && extra) return `${main} ${extra}`.trim();
+  return main || extra;
 }
 
 function buildMetadata(payload: Record<string, unknown>) {
