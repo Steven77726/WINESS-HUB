@@ -61,7 +61,7 @@ Deno.serve(async (request) => {
       data: null,
       error: message,
     }).catch(() => {});
-    return json(request, { error: error instanceof StuartConfigError ? message : "Erreur serveur Stuart" }, error instanceof StuartConfigError ? 400 : 500);
+    return json(request, { error: message || "Erreur serveur Stuart" }, error instanceof StuartConfigError ? 400 : 500);
   }
 });
 
@@ -152,11 +152,19 @@ function buildPickup(payload: Record<string, unknown>) {
       lastname: stringEnv("STUART_PICKUP_LAST_NAME") || "Hub",
       company: stringEnv("STUART_PICKUP_COMPANY") || "Winess",
       phone,
+      email: stringEnv("STUART_PICKUP_EMAIL"),
     },
   };
 }
 
 function buildDropoff(contact: Record<string, unknown>, payload: Record<string, unknown>, packageDescription: string) {
+  const comments = [
+    contact.courierInstructions || contact.instructions || "",
+    payload.extra_instructions || "",
+    payload.contains_alcohol === true ? "Contient de l'alcool" : "",
+    payload.fragile === true ? "Fragile" : "",
+  ].filter(Boolean).join(" · ");
+  const packageType = String(payload.package_type || Deno.env.get("STUART_PACKAGE_TYPE") || "small");
   return {
     address: String(contact.address || ""),
     address2: String(contact.address2 || ""),
@@ -166,9 +174,12 @@ function buildDropoff(contact: Record<string, unknown>, payload: Record<string, 
     access_code: String(contact.accessCode || contact.access_code || ""),
     floor: String(contact.floor || ""),
     has_elevator: contact.elevator === "Oui" ? true : contact.elevator === "Non" ? false : undefined,
-    comment: String(contact.courierInstructions || contact.instructions || ""),
-    package_type: String(payload.package_type || Deno.env.get("STUART_PACKAGE_TYPE") || "small"),
+    comment: comments,
+    package_type: packageType,
+    package_size: String(payload.package_size || ""),
     package_description: String(payload.package_description || packageDescription || payload.title || "Livraison Winess"),
+    contains_alcohol: payload.contains_alcohol === true,
+    fragile: payload.fragile === true,
     client_reference: String(payload.client_reference || payload.linked_order_id || payload.task_id || ""),
     contact: {
       firstname: String(contact.firstName || contact.firstname || ""),

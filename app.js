@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "308";
+const APP_VERSION = "309";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -19,11 +19,18 @@ const CLIENT_ID = crypto.randomUUID?.() || `client-${Date.now()}-${Math.random()
 const DEVICE_ID = getDeviceId();
 const EDGE_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
 const VAPID_PUBLIC_KEY = "BDEUT7mYiel6Ns3NpHSHgegKWk7jGK43pGrM9zR_MRl_A4zbfYD9oLQbSHscM8_OVkHTkjrBVW2-m0RTBrWqrAw";
+const STUART_PACKAGES = {
+  xsmall: { label: "Très petit", detail: "20 × 15 × 20 cm", api: "xsmall" },
+  small: { label: "Petit", detail: "50 × 30 × 30 cm", api: "small" },
+  medium: { label: "Moyen", detail: "55 × 40 × 40 cm", api: "medium" },
+  large: { label: "Large", detail: "90 × 65 × 50 cm", api: "large" },
+  xlarge: { label: "Extra-large", detail: "100 × 90 × 50 cm", api: "xlarge" }
+};
 
 const MISSION_TYPES = {
   preparation: { label: "📦 Préparation commande", statuses: ["Attribué", "En cours", "Prête", "Prête avec manquants", "Récupérée", "Terminée"] },
   blocage: { label: "📌 Blocage produit", statuses: ["Demandé", "Bloqué", "Récupéré"] },
-  livraison: { label: "🚚 Livraison", statuses: ["Créée", "Course demandée", "Coursier accepté", "Coursier en route", "Coursier arrivé", "Commande récupérée", "En livraison", "Livrée", "Annulée"] },
+  livraison: { label: "🚚 Livraison", statuses: ["Créée", "Course demandée", "Coursier accepté", "Coursier arrivé", "Commande récupérée", "En livraison", "Livrée", "Annulée"] },
   inventaire: { label: "📊 Inventaire", statuses: ["Attribué", "En cours", "Terminé"] },
   rappel: { label: "📞 Rappel client", statuses: ["Attribué", "Pris en charge", "Terminé"] },
   litige: { label: "⚠️ Litige", statuses: ["Attribué", "Pris en charge", "Terminé"] },
@@ -72,6 +79,7 @@ let selectedAvatar = "";
 let openedTaskId = "";
 let toastTimer = 0;
 let homeExpiryTimer = 0;
+let stuartPollTimer = 0;
 let activeSearchFilter = "all";
 let searchInputTimer = 0;
 
@@ -351,6 +359,7 @@ function render() {
   if (currentRubric) renderRubric(currentRubric);
   if (el.globalSearch?.value.trim()) renderSearchResults(el.globalSearch.value);
   scheduleHomeExpiry();
+  scheduleStuartPolling();
   bindRendered();
 }
 
@@ -362,6 +371,16 @@ function scheduleHomeExpiry() {
     .filter((delay) => delay > 0);
   if (!remaining.length) return;
   homeExpiryTimer = window.setTimeout(render, Math.min(...remaining) + 1000);
+}
+
+function scheduleStuartPolling() {
+  clearTimeout(stuartPollTimer);
+  const trackable = state.tasks.filter((item) => item.missionType === "livraison" && item.stuartJobId && !item.stuartTestMode && !isCompleted(item));
+  if (!trackable.length) return;
+  stuartPollTimer = window.setTimeout(async () => {
+    for (const item of trackable.slice(0, 5)) await refreshStuartStatus(item, false);
+    scheduleStuartPolling();
+  }, 60_000);
 }
 
 function activeTasksFor(name) {
@@ -945,6 +964,15 @@ function openDeliveryCreator() {
         <label>Étage<input name="floor" data-contact-field="floor"></label>
         <label>Ascenseur<select name="elevator" data-contact-field="elevator"><option value="">À préciser</option><option>Oui</option><option>Non</option></select></label>
         <label class="wide">Instructions livreur<textarea name="courierInstructions" data-contact-field="courierInstructions"></textarea></label>
+        <section class="package-picker wide">
+          <h3>Type de colis</h3>
+          ${Object.entries(STUART_PACKAGES).map(([key, option], index) => `<label class="package-option"><input name="packageType" type="radio" value="${key}" ${index === 1 ? "checked" : ""} required><span><strong>${option.label}</strong><small>${option.detail}</small></span></label>`).join("")}
+        </section>
+        <section class="delivery-options wide">
+          <label><input name="containsAlcohol" type="checkbox"> Contient de l'alcool</label>
+          <label><input name="fragile" type="checkbox"> Fragile</label>
+        </section>
+        <label class="wide">Instructions supplémentaires<textarea name="extraInstructions" placeholder="Ex : remettre au gardien, appeler 5 min avant..."></textarea></label>
         <label class="wide">Notes commande<textarea id="deliveryNotes" name="notes"></textarea></label>
       </section>
       <section class="delivery-order-preview wide" id="deliveryOrderPreview"></section>
@@ -1031,6 +1059,12 @@ function createDeliveryTask(event) {
     elevator: form.get("elevator") || "",
     courierInstructions: form.get("courierInstructions") || ""
   };
+  const packageType = form.get("packageType") || "small";
+  const extraInstructions = form.get("extraInstructions") || "";
+  const deliveryOptions = {
+    containsAlcohol: form.get("containsAlcohol") === "on",
+    fragile: form.get("fragile") === "on"
+  };
   const assignee = form.get("assignee") || "Steven";
   const item = {
     id: `task-${Date.now()}`,
@@ -1040,6 +1074,10 @@ function createDeliveryTask(event) {
     linkedOrderTitle: order.title,
     products: normalizeProducts(order),
     deliveryContact,
+    packageType,
+    packageSize: STUART_PACKAGES[packageType]?.detail || STUART_PACKAGES.small.detail,
+    deliveryOptions,
+    extraInstructions,
     assignee,
     assignedTo: assignee,
     createdBy: CURRENT_USER,
@@ -1146,6 +1184,7 @@ function openTask(id) {
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
   document.querySelector("#simulateStuart")?.addEventListener("click", () => createStuartDelivery(item, false));
   document.querySelector("#testStuart")?.addEventListener("click", () => createStuartDelivery(item, true));
+  document.querySelector("#refreshStuart")?.addEventListener("click", () => refreshStuartStatus(item, true));
   document.querySelectorAll("[data-product-check]").forEach((input) => input.addEventListener("change", () => toggleProductPrepared(item, input.dataset.productCheck, input.checked)));
   document.querySelector("#finishPreparation")?.addEventListener("click", () => finishPreparation(item));
   document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
@@ -1174,11 +1213,13 @@ function deliveryDetailMarkup(item) {
       <article><span>Étage</span><strong>${escapeHtml(contact.floor || "À préciser")}</strong></article>
       <article><span>Ascenseur</span><strong>${escapeHtml(contact.elevator || "À préciser")}</strong></article>
       <article><span>Instructions</span><strong>${escapeHtml(contact.courierInstructions || "Aucune")}</strong></article>
+      <article><span>Colis</span><strong>${escapeHtml(packageLabel(item))}</strong></article>
+      <article><span>Options</span><strong>${escapeHtml(deliveryOptionLabel(item))}</strong></article>
     </div>
     ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
     ${stuartInfoMarkup(item)}
     ${item.stuartError ? `<div class="missing-banner">Erreur Stuart : ${escapeHtml(item.stuartError)}</div>` : ""}
-    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button><button id="testStuart" class="secondary-action visible" type="button">Mode Test</button></div>` : item.stuartJobRequestedAt ? `<div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
+    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button><button id="testStuart" class="secondary-action visible" type="button">Mode Test</button></div>` : item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="refreshStuart" class="secondary-action visible" type="button">Actualiser Stuart</button></div><div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
   </section>`;
 }
 
@@ -1201,6 +1242,11 @@ async function createStuartDelivery(item, testMode = false) {
       scheduled_at: scheduledAt,
       delivery_contact: item.deliveryContact || {},
       products: normalizeProducts(item),
+      package_type: STUART_PACKAGES[item.packageType]?.api || item.packageType || "small",
+      package_size: item.packageSize || STUART_PACKAGES[item.packageType]?.detail || "",
+      contains_alcohol: Boolean(item.deliveryOptions?.containsAlcohol),
+      fragile: Boolean(item.deliveryOptions?.fragile),
+      extra_instructions: item.extraInstructions || "",
       package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title,
       test_mode: testMode
     };
@@ -1239,6 +1285,18 @@ async function createStuartDelivery(item, testMode = false) {
   }
 }
 
+function packageLabel(item) {
+  const pack = STUART_PACKAGES[item.packageType] || STUART_PACKAGES.small;
+  return `${pack.label} · ${item.packageSize || pack.detail}`;
+}
+
+function deliveryOptionLabel(item) {
+  const labels = [];
+  if (item.deliveryOptions?.containsAlcohol) labels.push("Alcool");
+  if (item.deliveryOptions?.fragile) labels.push("Fragile");
+  return labels.join(" · ") || "Aucune";
+}
+
 function validateStuartContact(contact) {
   if (!contact.phone) throw new Error("Téléphone manquant pour créer la livraison Stuart.");
   if (!contact.address) throw new Error("Adresse incomplète.");
@@ -1252,16 +1310,81 @@ function extractStuartCourse(data) {
     id: job.id || job.job_id || job.uuid || "",
     status: job.status || job.state || "",
     createdAt: job.created_at || job.createdAt || "",
-    trackingUrl: job.tracking_url || job.trackingUrl || job.tracking?.url || job.public_tracking_url || "",
+    trackingUrl: job.tracking_url || job.trackingUrl || job.tracking?.url || job.public_tracking_url || job.deliveries?.[0]?.tracking_url || "",
     testMode: Boolean(job.test_mode || data?.test_mode)
   };
+}
+
+function mapStuartStatus(status = "") {
+  const value = normalizeSearch(status).replace(/[_-]/g, " ");
+  if (value.includes("cancel")) return "Annulée";
+  if (value.includes("delivered") || value.includes("livree")) return "Livrée";
+  if (value.includes("delivering") || value.includes("dropoff") || value.includes("en livraison")) return "En livraison";
+  if (value.includes("picked") || value.includes("pickup complete") || value.includes("recup")) return "Commande récupérée";
+  if (value.includes("arriv") || value.includes("courier at pickup")) return "Coursier arrivé";
+  if (value.includes("going") || value.includes("courier") || value.includes("accepted")) return "Coursier accepté";
+  if (value.includes("search") || value.includes("created") || value.includes("pending") || value.includes("test")) return "Course demandée";
+  return status || "Course demandée";
+}
+
+function stuartDisplayStatus(item) {
+  const status = item.stuartStatus || item.status || "";
+  const mapped = mapStuartStatus(status);
+  const icons = {
+    "Course demandée": "🟡 Recherche d'un coursier",
+    "Coursier accepté": "🟢 Coursier accepté",
+    "Coursier arrivé": "🟠 En route vers la boutique",
+    "Commande récupérée": "🔵 Commande récupérée",
+    "En livraison": "🟣 En livraison",
+    "Livrée": "✅ Livrée",
+    "Annulée": "❌ Annulée"
+  };
+  return icons[mapped] || mapped;
+}
+
+async function refreshStuartStatus(item, manual = false) {
+  if (!item.stuartJobId || item.stuartTestMode) {
+    if (manual) showToast(item.stuartTestMode ? "Mode Test : pas de suivi réel" : "Aucune course Stuart");
+    return;
+  }
+  try {
+    const response = await callEdgeFunction("stuart-api", {
+      action: "get-delivery",
+      task_id: item.id,
+      created_by: memberIdForName(CURRENT_USER || "system"),
+      payload: { job_id: item.stuartJobId }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "Suivi Stuart indisponible");
+    const course = extractStuartCourse(result.data);
+    const nextStatus = mapStuartStatus(course.status);
+    const previousStatus = item.status;
+    item.stuartStatus = course.status || item.stuartStatus;
+    item.stuartTrackingUrl = course.trackingUrl || item.stuartTrackingUrl;
+    if (nextStatus && nextStatus !== item.status) {
+      item.status = nextStatus;
+      item.history.push(`Statut Stuart : ${stuartDisplayStatus(item)} — ${dateTimeNow()}`);
+      recordStatusActivity(item, item.status, previousStatus);
+    }
+    item.stuartError = "";
+    save(item);
+    render();
+    if (manual) showToast("Statut Stuart actualisé");
+  } catch (error) {
+    item.stuartError = error.message || "Suivi Stuart indisponible";
+    save(item);
+    if (manual) {
+      render();
+      showToast(`Erreur Stuart : ${item.stuartError}`);
+    }
+  }
 }
 
 function stuartInfoMarkup(item) {
   if (!item.stuartJobId && !item.stuartStatus && !item.stuartTrackingUrl) return "";
   return `<div class="delivery-grid stuart-result">
     <article><span>ID Stuart</span><strong>${escapeHtml(item.stuartJobId || "À venir")}</strong></article>
-    <article><span>Statut Stuart</span><strong>${escapeHtml(item.stuartStatus || item.status || "À venir")}</strong></article>
+    <article><span>Statut Stuart</span><strong>${escapeHtml(stuartDisplayStatus(item))}</strong></article>
     <article><span>Créée</span><strong>${item.stuartCreatedAt ? new Date(item.stuartCreatedAt).toLocaleString("fr-FR") : "À venir"}</strong></article>
     <article><span>Suivi</span><strong>${item.stuartTrackingUrl ? `<a href="${escapeHtml(item.stuartTrackingUrl)}" target="_blank" rel="noopener">Ouvrir</a>` : "À venir"}</strong></article>
     ${item.stuartTestMode ? `<article><span>Mode</span><strong>Test</strong></article>` : ""}

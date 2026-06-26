@@ -1347,6 +1347,41 @@ h1 {
   background: rgba(246,183,60,.1);
   font-weight: 900;
 }
+.package-picker {
+  display: grid;
+  gap: 8px;
+}
+.package-picker h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+.package-option,
+.delivery-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  background: rgba(6,9,15,.42);
+}
+.package-option input,
+.delivery-options input {
+  accent-color: #f6b73c;
+}
+.package-option span {
+  display: grid;
+  gap: 2px;
+}
+.package-option small {
+  color: #9ca3af;
+}
+.delivery-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 .delivery-products, .delivery-order-preview {
   display: grid;
   gap: 5px;
@@ -1374,7 +1409,7 @@ h1 {
   .push-panel { grid-template-columns: 1fr; align-items: stretch; }
   .product-row { grid-template-columns: 1fr; }
   .remove-product { justify-self: end; }
-  .stuart-form, .delivery-grid, .stuart-actions { grid-template-columns: 1fr; }
+  .stuart-form, .delivery-grid, .stuart-actions, .delivery-options { grid-template-columns: 1fr; }
   .address-toolbar, .contact-card { grid-template-columns: 1fr; }
   .contact-actions { width: 100%; }
   .contact-actions button { flex: 1; }
