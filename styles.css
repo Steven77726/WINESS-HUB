@@ -1264,6 +1264,16 @@ h1 {
   gap: 10px;
 }
 .stuart-result a { color: #ffd98a; text-decoration: none; }
+.stuart-quote {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid rgba(246,183,60,.2);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(246,183,60,.14), rgba(255,255,255,.045));
+}
+.stuart-quote strong { color: #fff; }
+.stuart-quote span { color: #ffd98a; font-weight: 900; }
 .address-toolbar {
   display: grid;
   grid-template-columns: 1fr auto;

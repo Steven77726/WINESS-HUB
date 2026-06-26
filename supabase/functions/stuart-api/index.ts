@@ -1,6 +1,6 @@
 import { adminClient, allowedRequest, corsHeaders, json, safeTaskUrl, validText } from "../_shared/http.ts";
 
-type StuartAction = "create-delivery" | "track-delivery" | "cancel-delivery" | "get-delivery";
+type StuartAction = "quote-delivery" | "create-delivery" | "track-delivery" | "cancel-delivery" | "get-delivery";
 
 type StuartResponse = {
   ok: boolean;
@@ -32,7 +32,7 @@ Deno.serve(async (request) => {
     createdBy = typeof body.created_by === "string" && body.created_by ? body.created_by : "system";
     payload = typeof body.payload === "object" && body.payload !== null ? body.payload : {};
 
-    if (!["create-delivery", "track-delivery", "cancel-delivery", "get-delivery"].includes(action)) {
+    if (!["quote-delivery", "create-delivery", "track-delivery", "cancel-delivery", "get-delivery"].includes(action)) {
       return json(request, { error: "Action Stuart inconnue" }, 400);
     }
     if (!validText(taskId, 120)) return json(request, { error: "task_id manquant" }, 400);
@@ -66,6 +66,18 @@ Deno.serve(async (request) => {
 });
 
 async function callStuart(action: StuartAction, payload: Record<string, unknown>): Promise<StuartResponse> {
+  if (action === "quote-delivery" && payload.test_mode === true) {
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        amount: 12.9,
+        currency: "EUR",
+        duration: 18,
+        test_mode: true,
+      },
+    };
+  }
   if (action === "create-delivery" && payload.test_mode === true) {
     return {
       ok: true,
@@ -81,6 +93,13 @@ async function callStuart(action: StuartAction, payload: Record<string, unknown>
   }
 
   const baseUrl = (Deno.env.get("STUART_API_BASE_URL") || DEFAULT_API_BASE).replace(/\/$/, "");
+
+  if (action === "quote-delivery") {
+    const body = buildCreateDeliveryPayload(payload);
+    const token = await getStuartAccessToken();
+    const pricingPath = Deno.env.get("STUART_PRICING_PATH") || "/jobs/pricing";
+    return fetchStuart(`${baseUrl}${pricingPath.startsWith("/") ? pricingPath : `/${pricingPath}`}`, "POST", token, body);
+  }
 
   if (action === "create-delivery") {
     const body = buildCreateDeliveryPayload(payload);

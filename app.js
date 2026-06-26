@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "310";
+const APP_VERSION = "311";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -1182,8 +1182,10 @@ function openTask(id) {
   });
   document.querySelector("#shareTask").addEventListener("click", () => shareTask(item));
   document.querySelector("#shareTaskBottom").addEventListener("click", () => shareTask(item));
+  document.querySelector("#quoteStuart")?.addEventListener("click", () => calculateStuartQuote(item, false));
   document.querySelector("#simulateStuart")?.addEventListener("click", () => createStuartDelivery(item, false));
   document.querySelector("#testStuart")?.addEventListener("click", () => createStuartDelivery(item, true));
+  document.querySelector("#modifyStuartQuote")?.addEventListener("click", () => clearStuartQuote(item));
   document.querySelector("#refreshStuart")?.addEventListener("click", () => refreshStuartStatus(item, true));
   document.querySelectorAll("[data-product-check]").forEach((input) => input.addEventListener("change", () => toggleProductPrepared(item, input.dataset.productCheck, input.checked)));
   document.querySelector("#finishPreparation")?.addEventListener("click", () => finishPreparation(item));
@@ -1218,9 +1220,116 @@ function deliveryDetailMarkup(item) {
     </div>
     ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
     ${stuartInfoMarkup(item)}
+    ${stuartQuoteMarkup(item)}
     ${item.stuartError ? `<div class="missing-banner">Erreur Stuart : ${escapeHtml(item.stuartError)}</div>` : ""}
-    ${!isCompleted(item) && !item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="simulateStuart" class="primary-action visible" type="button">Créer livraison Stuart</button><button id="testStuart" class="secondary-action visible" type="button">Mode Test</button></div>` : item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="refreshStuart" class="secondary-action visible" type="button">Actualiser Stuart</button></div><div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
+    ${!isCompleted(item) && !item.stuartJobRequestedAt ? stuartActionMarkup(item) : item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="refreshStuart" class="secondary-action visible" type="button">Actualiser Stuart</button></div><div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
   </section>`;
+}
+
+function stuartActionMarkup(item) {
+  if (item.stuartQuote) {
+    return `<div class="stuart-actions"><button id="simulateStuart" class="primary-action visible" type="button">🟢 Créer la livraison</button><button id="modifyStuartQuote" class="secondary-action visible" type="button">⚪ Modifier</button></div>`;
+  }
+  return `<div class="stuart-actions"><button id="quoteStuart" class="primary-action visible" type="button">Calculer le tarif Stuart</button><button id="testStuart" class="secondary-action visible" type="button">Mode Test</button></div>`;
+}
+
+function stuartQuoteMarkup(item) {
+  if (!item.stuartQuote) return "";
+  return `<section class="stuart-quote">
+    <strong>🚚 Livraison Stuart</strong>
+    <span>💶 Prix estimé : ${formatStuartPrice(item.stuartQuote)}</span>
+    <span>🕒 Temps estimé : ${formatStuartDuration(item.stuartQuote)}</span>
+  </section>`;
+}
+
+function formatStuartPrice(quote = {}) {
+  const amount = Number(quote.amount ?? quote.price ?? quote.total ?? quote.amountInCents / 100);
+  const currency = quote.currency || "EUR";
+  if (!Number.isFinite(amount)) return "À confirmer";
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency }).format(amount);
+}
+
+function formatStuartDuration(quote = {}) {
+  const minutes = Number(quote.duration ?? quote.eta ?? quote.estimated_duration ?? quote.durationInMinutes);
+  if (!Number.isFinite(minutes)) return "À confirmer";
+  return `${Math.round(minutes)} min`;
+}
+
+function buildStuartPayload(item, testMode = false) {
+  const scheduledAt = item.dueDate ? new Date(`${item.dueDate}T${item.dueTime || "12:00"}`).toISOString() : null;
+  return {
+    task_id: item.id,
+    title: item.title,
+    linked_order_id: item.linkedOrderId || "",
+    linked_order_title: item.linkedOrderTitle || "",
+    client_reference: item.linkedOrderId || item.id,
+    scheduled_at: scheduledAt,
+    delivery_contact: item.deliveryContact || {},
+    products: normalizeProducts(item),
+    package_type: STUART_PACKAGES[item.packageType]?.api || item.packageType || "small",
+    package_size: item.packageSize || STUART_PACKAGES[item.packageType]?.detail || "",
+    contains_alcohol: Boolean(item.deliveryOptions?.containsAlcohol),
+    fragile: Boolean(item.deliveryOptions?.fragile),
+    extra_instructions: item.extraInstructions || "",
+    package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title,
+    test_mode: testMode
+  };
+}
+
+async function calculateStuartQuote(item, testMode = false) {
+  const button = document.querySelector("#quoteStuart");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Calcul en cours...";
+  }
+  try {
+    validateStuartContact(item.deliveryContact || {});
+    const response = await callEdgeFunction("stuart-api", {
+      action: "quote-delivery",
+      task_id: item.id,
+      created_by: memberIdForName(CURRENT_USER || "system"),
+      payload: buildStuartPayload(item, testMode)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || "Impossible de calculer le tarif Stuart.");
+    item.stuartQuote = extractStuartQuote(result.data);
+    item.stuartQuoteAt = new Date().toISOString();
+    item.stuartError = "";
+    item.history.push(`Tarif Stuart calculé : ${formatStuartPrice(item.stuartQuote)} · ${formatStuartDuration(item.stuartQuote)} — ${dateTimeNow()}`);
+    save(item);
+    render();
+    openTask(item.id);
+    showToast("Tarif Stuart calculé");
+  } catch (error) {
+    item.stuartError = error.message || "Impossible de calculer le tarif Stuart.";
+    item.history.push(`Erreur tarif Stuart : ${item.stuartError} — ${dateTimeNow()}`);
+    save(item);
+    render();
+    openTask(item.id);
+    showToast(item.stuartError);
+  }
+}
+
+function extractStuartQuote(data) {
+  const source = data?.pricing || data?.price || data?.quote || data?.job || data?.data || data || {};
+  const amount = source.amount ?? source.total ?? source.price ?? source.amount_cents / 100 ?? source.amountInCents / 100;
+  const duration = source.duration ?? source.eta ?? source.estimated_duration ?? source.estimatedDuration ?? source.duration_min ?? source.durationInMinutes;
+  return {
+    amount,
+    currency: source.currency || source.currency_code || "EUR",
+    duration,
+    raw: data
+  };
+}
+
+function clearStuartQuote(item) {
+  item.stuartQuote = null;
+  item.stuartQuoteAt = null;
+  item.stuartError = "";
+  save(item);
+  render();
+  openTask(item.id);
+  showToast("Tarif réinitialisé");
 }
 
 async function createStuartDelivery(item, testMode = false) {
@@ -1231,30 +1340,15 @@ async function createStuartDelivery(item, testMode = false) {
     button.textContent = testMode ? "Test en cours..." : "Création Stuart...";
   }
   try {
-    if (!testMode) validateStuartContact(item.deliveryContact || {});
-    const scheduledAt = item.dueDate ? new Date(`${item.dueDate}T${item.dueTime || "12:00"}`).toISOString() : null;
-    const payload = {
-      task_id: item.id,
-      title: item.title,
-      linked_order_id: item.linkedOrderId || "",
-      linked_order_title: item.linkedOrderTitle || "",
-      client_reference: item.linkedOrderId || item.id,
-      scheduled_at: scheduledAt,
-      delivery_contact: item.deliveryContact || {},
-      products: normalizeProducts(item),
-      package_type: STUART_PACKAGES[item.packageType]?.api || item.packageType || "small",
-      package_size: item.packageSize || STUART_PACKAGES[item.packageType]?.detail || "",
-      contains_alcohol: Boolean(item.deliveryOptions?.containsAlcohol),
-      fragile: Boolean(item.deliveryOptions?.fragile),
-      extra_instructions: item.extraInstructions || "",
-      package_description: normalizeProducts(item).map((product) => `${product.name || "Produit"} x${product.requested || 1}`).join(", ") || item.title,
-      test_mode: testMode
-    };
+    if (!testMode) {
+      validateStuartContact(item.deliveryContact || {});
+      if (!item.stuartQuote) throw new Error("Calculez le tarif Stuart avant de créer la livraison.");
+    }
     const response = await callEdgeFunction("stuart-api", {
       action: "create-delivery",
       task_id: item.id,
       created_by: memberIdForName(CURRENT_USER || "system"),
-      payload
+      payload: buildStuartPayload(item, testMode)
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || "Erreur Stuart");
