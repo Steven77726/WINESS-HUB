@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "309";
+const APP_VERSION = "310";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -1271,6 +1271,7 @@ async function createStuartDelivery(item, testMode = false) {
     item.stuartError = "";
     item.history.push(`${testMode ? "Livraison Stuart TEST créée" : "Livraison Stuart créée"} par ${CURRENT_USER}${course.id ? ` · ID ${course.id}` : ""} — ${dateTimeNow()}`);
     recordStatusActivity(item, item.status, previousStatus);
+    if (!testMode) notifyStuart(item, "created");
     save(item);
     render();
     el.taskDialog.close();
@@ -1365,6 +1366,7 @@ async function refreshStuartStatus(item, manual = false) {
       item.status = nextStatus;
       item.history.push(`Statut Stuart : ${stuartDisplayStatus(item)} — ${dateTimeNow()}`);
       recordStatusActivity(item, item.status, previousStatus);
+      notifyStuart(item, nextStatus);
     }
     item.stuartError = "";
     save(item);
@@ -1378,6 +1380,26 @@ async function refreshStuartStatus(item, manual = false) {
       showToast(`Erreur Stuart : ${item.stuartError}`);
     }
   }
+}
+
+function notifyStuart(item, event) {
+  const contact = item.deliveryContact || {};
+  const recipient = contactFullName(contact);
+  const eta = item.stuartEta || item.stuartEstimatedArrival || "";
+  const notifications = {
+    created: ["🚚 Livraison Stuart", `Course créée pour ${recipient}.`],
+    "Course demandée": ["🚚 Livraison Stuart", `Course créée pour ${recipient}.`],
+    "Coursier accepté": ["🛵 Coursier accepté", `Livraison ${recipient}.`],
+    "Coursier arrivé": ["🚗 Coursier en route", eta ? `Arrivée estimée boutique : ${eta}.` : "Le coursier arrive vers la boutique."],
+    "Commande récupérée": ["📦 Colis récupéré", `Direction client : ${recipient}.`],
+    "En livraison": ["🚚 Livraison en cours", eta ? `Arrivée estimée : ${eta}.` : `Livraison ${recipient} en cours.`],
+    "Livrée": ["✅ Livraison terminée", `${recipient} a été livré.`],
+    "Annulée": ["⚠️ Incident livraison", "Vérifier la course Stuart."],
+    incident: ["⚠️ Incident livraison", "Vérifier la course Stuart."]
+  };
+  const [title, body] = notifications[event] || notifications.incident;
+  const target = item.createdBy === CURRENT_USER ? item.assignee : item.createdBy;
+  sendPush(target, title, body, `#task-${item.id}`, `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
 }
 
 function stuartInfoMarkup(item) {
