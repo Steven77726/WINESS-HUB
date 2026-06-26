@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "312";
+const APP_VERSION = "313";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -1291,7 +1291,7 @@ function deliveryDetailMarkup(item) {
       <article><span>Options</span><strong>${escapeHtml(deliveryOptionLabel(item))}</strong></article>
     </div>
     ${item.products?.length ? `<div class="delivery-products"><strong>Produits</strong>${item.products.map((product) => `<small>${escapeHtml(product.name || "Produit")} · ${product.requested || 0}</small>`).join("")}</div>` : ""}
-    ${stuartInfoMarkup(item)}
+    ${stuartTrackingMarkup(item)}
     ${stuartQuoteMarkup(item)}
     ${item.stuartError ? `<div class="missing-banner">Erreur Stuart : ${escapeHtml(item.stuartError)}</div>` : ""}
     ${!isCompleted(item) && !item.stuartJobRequestedAt ? stuartActionMarkup(item) : item.stuartJobRequestedAt ? `<div class="stuart-actions"><button id="refreshStuart" class="secondary-action visible" type="button">Actualiser Stuart</button></div><div class="available-banner">Livraison Stuart demandée · ${new Date(item.stuartJobRequestedAt).toLocaleString("fr-FR")}</div>` : ""}
@@ -1432,12 +1432,14 @@ async function createStuartDelivery(item, testMode = false) {
     item.stuartJobId = course.id;
     item.stuartStatus = course.status || item.status;
     item.stuartCreatedAt = course.createdAt || item.stuartJobRequestedAt;
+    item.stuartLastSyncAt = course.updatedAt || item.stuartJobRequestedAt;
+    item.stuartEta = course.eta || "";
     item.stuartTrackingUrl = course.trackingUrl;
     item.stuartTestMode = Boolean(course.testMode || testMode);
     item.stuartError = "";
+    appendStuartTimeline(item, "Course demandée", item.stuartJobRequestedAt);
     item.history.push(`${testMode ? "Livraison Stuart TEST créée" : "Livraison Stuart créée"} par ${CURRENT_USER}${course.id ? ` · ID ${course.id}` : ""} — ${dateTimeNow()}`);
     recordStatusActivity(item, item.status, previousStatus);
-    if (!testMode) notifyStuart(item, "created");
     save(item);
     render();
     el.taskDialog.close();
@@ -1474,19 +1476,24 @@ function validateStuartContact(contact) {
 
 function extractStuartCourse(data) {
   const job = data?.job || data?.data || data || {};
+  const delivery = Array.isArray(job.deliveries) ? job.deliveries[0] || {} : {};
   return {
     id: job.id || job.job_id || job.uuid || "",
     status: job.status || job.state || "",
     createdAt: job.created_at || job.createdAt || "",
-    trackingUrl: job.tracking_url || job.trackingUrl || job.tracking?.url || job.public_tracking_url || job.deliveries?.[0]?.tracking_url || "",
+    updatedAt: job.updated_at || job.updatedAt || delivery.updated_at || delivery.updatedAt || "",
+    eta: job.eta || job.estimated_arrival || job.estimatedArrival || job.dropoff_eta || delivery.eta || delivery.estimated_arrival || delivery.estimatedArrival || "",
+    trackingUrl: job.tracking_url || job.trackingUrl || job.tracking?.url || job.public_tracking_url || delivery.tracking_url || "",
     testMode: Boolean(job.test_mode || data?.test_mode)
   };
 }
 
 function mapStuartStatus(status = "") {
   const value = normalizeSearch(status).replace(/[_-]/g, " ");
+  if (value.includes("incident") || value.includes("failed") || value.includes("problem")) return "Incident";
   if (value.includes("cancel")) return "Annulée";
   if (value.includes("delivered") || value.includes("livree")) return "Livrée";
+  if (value.includes("at dropoff") || value.includes("arrived at dropoff") || value.includes("client")) return "Arrivé client";
   if (value.includes("delivering") || value.includes("dropoff") || value.includes("en livraison")) return "En livraison";
   if (value.includes("picked") || value.includes("pickup complete") || value.includes("recup")) return "Commande récupérée";
   if (value.includes("arriv") || value.includes("courier at pickup")) return "Coursier arrivé";
@@ -1504,8 +1511,10 @@ function stuartDisplayStatus(item) {
     "Coursier arrivé": "🟠 En route vers la boutique",
     "Commande récupérée": "🔵 Commande récupérée",
     "En livraison": "🟣 En livraison",
+    "Arrivé client": "📍 Arrivé chez le client",
     "Livrée": "✅ Livrée",
-    "Annulée": "❌ Annulée"
+    "Annulée": "❌ Annulée",
+    "Incident": "⚠️ Incident"
   };
   return icons[mapped] || mapped;
 }
@@ -1528,9 +1537,12 @@ async function refreshStuartStatus(item, manual = false) {
     const nextStatus = mapStuartStatus(course.status);
     const previousStatus = item.status;
     item.stuartStatus = course.status || item.stuartStatus;
+    item.stuartLastSyncAt = course.updatedAt || new Date().toISOString();
+    item.stuartEta = course.eta || item.stuartEta || "";
     item.stuartTrackingUrl = course.trackingUrl || item.stuartTrackingUrl;
     if (nextStatus && nextStatus !== item.status) {
       item.status = nextStatus;
+      appendStuartTimeline(item, nextStatus, item.stuartLastSyncAt);
       item.history.push(`Statut Stuart : ${stuartDisplayStatus(item)} — ${dateTimeNow()}`);
       recordStatusActivity(item, item.status, previousStatus);
       notifyStuart(item, nextStatus);
@@ -1553,31 +1565,87 @@ function notifyStuart(item, event) {
   const contact = item.deliveryContact || {};
   const recipient = contactFullName(contact);
   const eta = item.stuartEta || item.stuartEstimatedArrival || "";
+  const normalizedEvent = normalizeSearch(event);
+  const isLate = normalizedEvent.includes("retard") || normalizedEvent.includes("delay") || normalizedEvent.includes("late");
+  const isIncident = normalizedEvent.includes("incident") || normalizedEvent.includes("failed") || normalizedEvent.includes("problem");
   const notifications = {
-    created: ["🚚 Livraison Stuart", `Course créée pour ${recipient}.`],
-    "Course demandée": ["🚚 Livraison Stuart", `Course créée pour ${recipient}.`],
-    "Coursier accepté": ["🛵 Coursier accepté", `Livraison ${recipient}.`],
-    "Coursier arrivé": ["🚗 Coursier en route", eta ? `Arrivée estimée boutique : ${eta}.` : "Le coursier arrive vers la boutique."],
-    "Commande récupérée": ["📦 Colis récupéré", `Direction client : ${recipient}.`],
-    "En livraison": ["🚚 Livraison en cours", eta ? `Arrivée estimée : ${eta}.` : `Livraison ${recipient} en cours.`],
     "Livrée": ["✅ Livraison terminée", `${recipient} a été livré.`],
-    "Annulée": ["⚠️ Incident livraison", "Vérifier la course Stuart."],
-    incident: ["⚠️ Incident livraison", "Vérifier la course Stuart."]
+    "Annulée": ["❌ Livraison annulée", "La course Stuart a été annulée."],
+    incident: ["⚠️ Incident livraison", "Vérifier la course Stuart."],
+    late: ["⏰ Retard livraison", eta ? `Retard important détecté. ETA : ${eta}.` : "Retard important détecté sur la course Stuart."]
   };
-  const [title, body] = notifications[event] || notifications.incident;
+  const notification = notifications[event] || (isIncident ? notifications.incident : isLate ? notifications.late : null);
+  if (!notification) return;
+  const [title, body] = notification;
   const target = item.createdBy === CURRENT_USER ? item.assignee : item.createdBy;
   sendPush(target, title, body, `#task-${item.id}`, `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
 }
 
-function stuartInfoMarkup(item) {
+function stuartTrackingMarkup(item) {
   if (!item.stuartJobId && !item.stuartStatus && !item.stuartTrackingUrl) return "";
-  return `<div class="delivery-grid stuart-result">
-    <article><span>ID Stuart</span><strong>${escapeHtml(item.stuartJobId || "À venir")}</strong></article>
-    <article><span>Statut Stuart</span><strong>${escapeHtml(stuartDisplayStatus(item))}</strong></article>
-    <article><span>Créée</span><strong>${item.stuartCreatedAt ? new Date(item.stuartCreatedAt).toLocaleString("fr-FR") : "À venir"}</strong></article>
-    <article><span>Suivi</span><strong>${item.stuartTrackingUrl ? `<a href="${escapeHtml(item.stuartTrackingUrl)}" target="_blank" rel="noopener">Ouvrir</a>` : "À venir"}</strong></article>
-    ${item.stuartTestMode ? `<article><span>Mode</span><strong>Test</strong></article>` : ""}
-  </div>`;
+  const timeline = stuartTimelineEntries(item);
+  return `<section class="stuart-tracking">
+    <header>
+      <div><strong>🚚 Suivi Stuart</strong><span>${escapeHtml(item.stuartJobId || "Course en attente")}</span></div>
+      ${item.stuartTrackingUrl ? `<a href="${escapeHtml(item.stuartTrackingUrl)}" target="_blank" rel="noopener">Suivi</a>` : ""}
+    </header>
+    <div class="stuart-status-grid">
+      <article><span>Statut actuel</span><strong>${escapeHtml(stuartDisplayStatus(item))}</strong></article>
+      <article><span>ETA</span><strong>${escapeHtml(formatStuartEta(item.stuartEta))}</strong></article>
+      <article><span>Dernière mise à jour</span><strong>${formatStuartDate(item.stuartLastSyncAt || item.updatedAt)}</strong></article>
+      <article><span>Créée</span><strong>${formatStuartDate(item.stuartCreatedAt)}</strong></article>
+      ${item.stuartTestMode ? `<article><span>Mode</span><strong>Test</strong></article>` : ""}
+    </div>
+    <div class="stuart-timeline">
+      ${timeline.map((entry) => `<div class="stuart-step ${entry.done ? "is-done" : ""}">
+        <span>${escapeHtml(entry.icon)}</span>
+        <strong>${escapeHtml(entry.label)}</strong>
+        <small>${escapeHtml(entry.time || "En attente")}</small>
+      </div>`).join("")}
+    </div>
+  </section>`;
+}
+
+function appendStuartTimeline(item, status, when = "") {
+  const mapped = mapStuartStatus(status);
+  const key = normalizedStatusKey(mapped);
+  const timestamp = when || new Date().toISOString();
+  const timeline = Array.isArray(item.stuartTimeline) ? item.stuartTimeline : [];
+  if (!timeline.some((entry) => entry?.key === key)) item.stuartTimeline = [...timeline, { key, status: mapped, at: timestamp }];
+}
+
+function stuartTimelineEntries(item) {
+  const saved = Array.isArray(item.stuartTimeline) ? item.stuartTimeline : [];
+  const byKey = new Map(saved.map((entry) => [entry?.key || normalizedStatusKey(entry?.status), entry]));
+  return [
+    ["Course demandée", "✅", "Course créée"],
+    ["Coursier accepté", "🛵", "Coursier accepté"],
+    ["Coursier arrivé", "🏪", "Arrivé chez Winess"],
+    ["Commande récupérée", "📦", "Colis récupéré"],
+    ["En livraison", "🚗", "En route vers le client"],
+    ["Arrivé client", "📍", "Arrivé chez le client"],
+    ["Livrée", "✅", "Livraison effectuée"]
+  ].map(([status, icon, label]) => {
+    const key = normalizedStatusKey(status);
+    const entry = byKey.get(key);
+    return { icon, label, done: Boolean(entry), time: entry?.at ? formatStuartDate(entry.at) : "" };
+  });
+}
+
+function formatStuartEta(value) {
+  if (!value) return "À venir";
+  const number = Number(value);
+  if (Number.isFinite(number)) return `${Math.round(number)} min`;
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return String(value);
+}
+
+function formatStuartDate(value) {
+  if (!value) return "À venir";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
 function preparationDetailMarkup(item) {
@@ -1688,6 +1756,7 @@ function recordStatusActivity(item, status, previousStatus = "") {
   applyCompletionMetadata(item, previousStatus);
   item.history.push(`${status} par ${CURRENT_USER} — ${dateTimeNow()}`);
   addActivity(`${CURRENT_USER} ${wording}`);
+  if (item.missionType === "livraison" && item.stuartJobId) return;
   const eventId = `task:${item.id}:status:${status}`;
   if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} a pris en charge la tâche : ${item.title}`, `#task-${item.id}`, eventId);
   if (status === "Prête") sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`, eventId);

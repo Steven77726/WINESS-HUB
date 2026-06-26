@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.stuart-api]
 verify_jwt = false
+
+[functions.poll-stuart]
+verify_jwt = false
