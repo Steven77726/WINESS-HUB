@@ -99,7 +99,7 @@ function isTrackable(task: Record<string, unknown>) {
   const jobId = String(task.stuartJobId || "").trim();
   if (!jobId || task.stuartTestMode === true) return false;
   if (task.deletedAt || task.archivedAt) return false;
-  return !["Livrée", "Annulée", "Incident"].includes(String(task.status || ""));
+  return !["Livrée", "Annulée", "Incident", "Erreur"].includes(String(task.status || ""));
 }
 
 async function getStuartCourse(taskId: string, task: Record<string, unknown>): Promise<StuartCourse> {

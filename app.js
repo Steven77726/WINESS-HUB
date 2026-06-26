@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "313";
+const APP_VERSION = "314";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -380,12 +380,18 @@ function scheduleHomeExpiry() {
 
 function scheduleStuartPolling() {
   clearTimeout(stuartPollTimer);
-  const trackable = state.tasks.filter((item) => item.missionType === "livraison" && item.stuartJobId && !item.stuartTestMode && !isCompleted(item));
+  const trackable = state.tasks.filter(isActiveStuartDelivery);
   if (!trackable.length) return;
   stuartPollTimer = window.setTimeout(async () => {
     for (const item of trackable.slice(0, 5)) await refreshStuartStatus(item, false);
     scheduleStuartPolling();
   }, 60_000);
+}
+
+function isActiveStuartDelivery(item) {
+  if (item.missionType !== "livraison" || !item.stuartJobId || item.stuartTestMode) return false;
+  if (item.deletedAt || item.archivedAt) return false;
+  return !["livree", "annulee", "incident", "erreur"].includes(normalizedStatusKey(item.status));
 }
 
 function activeTasksFor(name) {
