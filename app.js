@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "314";
+const APP_VERSION = "315";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -391,7 +391,7 @@ function scheduleStuartPolling() {
 function isActiveStuartDelivery(item) {
   if (item.missionType !== "livraison" || !item.stuartJobId || item.stuartTestMode) return false;
   if (item.deletedAt || item.archivedAt) return false;
-  return !["livree", "annulee", "incident", "erreur"].includes(normalizedStatusKey(item.status));
+  return !["livree", "terminee", "termine", "annulee", "incident", "erreur"].includes(normalizedStatusKey(item.status));
 }
 
 function activeTasksFor(name) {
@@ -1498,7 +1498,7 @@ function mapStuartStatus(status = "") {
   const value = normalizeSearch(status).replace(/[_-]/g, " ");
   if (value.includes("incident") || value.includes("failed") || value.includes("problem")) return "Incident";
   if (value.includes("cancel")) return "Annulée";
-  if (value.includes("delivered") || value.includes("livree")) return "Livrée";
+  if (value.includes("delivered") || value.includes("completed") || value.includes("livree") || value.includes("terminee")) return "Terminée";
   if (value.includes("at dropoff") || value.includes("arrived at dropoff") || value.includes("client")) return "Arrivé client";
   if (value.includes("delivering") || value.includes("dropoff") || value.includes("en livraison")) return "En livraison";
   if (value.includes("picked") || value.includes("pickup complete") || value.includes("recup")) return "Commande récupérée";
@@ -1519,6 +1519,7 @@ function stuartDisplayStatus(item) {
     "En livraison": "🟣 En livraison",
     "Arrivé client": "📍 Arrivé chez le client",
     "Livrée": "✅ Livrée",
+    "Terminée": "✅ Terminée",
     "Annulée": "❌ Annulée",
     "Incident": "⚠️ Incident"
   };
@@ -1547,9 +1548,14 @@ async function refreshStuartStatus(item, manual = false) {
     item.stuartEta = course.eta || item.stuartEta || "";
     item.stuartTrackingUrl = course.trackingUrl || item.stuartTrackingUrl;
     if (nextStatus && nextStatus !== item.status) {
-      item.status = nextStatus;
-      appendStuartTimeline(item, nextStatus, item.stuartLastSyncAt);
+      const finalByStuart = nextStatus === "Terminée";
+      item.status = finalByStuart ? "Terminée" : nextStatus;
+      appendStuartTimeline(item, finalByStuart ? "Livrée" : nextStatus, item.stuartLastSyncAt);
       item.history.push(`Statut Stuart : ${stuartDisplayStatus(item)} — ${dateTimeNow()}`);
+      if (finalByStuart) {
+        item.history.push(`Livraison confirmée automatiquement par Stuart. — ${dateTimeNow()}`);
+        item.history.push(`Tâche clôturée automatiquement. — ${dateTimeNow()}`);
+      }
       recordStatusActivity(item, item.status, previousStatus);
       notifyStuart(item, nextStatus);
     }
@@ -1575,7 +1581,7 @@ function notifyStuart(item, event) {
   const isLate = normalizedEvent.includes("retard") || normalizedEvent.includes("delay") || normalizedEvent.includes("late");
   const isIncident = normalizedEvent.includes("incident") || normalizedEvent.includes("failed") || normalizedEvent.includes("problem");
   const notifications = {
-    "Livrée": ["✅ Livraison terminée", `${recipient} a été livré.`],
+    "Terminée": ["✅ Livraison Stuart terminée", `Client : ${recipient}\nLa tâche a été clôturée automatiquement.`],
     "Annulée": ["❌ Livraison annulée", "La course Stuart a été annulée."],
     incident: ["⚠️ Incident livraison", "Vérifier la course Stuart."],
     late: ["⏰ Retard livraison", eta ? `Retard important détecté. ETA : ${eta}.` : "Retard important détecté sur la course Stuart."]
@@ -1583,8 +1589,7 @@ function notifyStuart(item, event) {
   const notification = notifications[event] || (isIncident ? notifications.incident : isLate ? notifications.late : null);
   if (!notification) return;
   const [title, body] = notification;
-  const target = item.createdBy === CURRENT_USER ? item.assignee : item.createdBy;
-  sendPush(target, title, body, `#task-${item.id}`, `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
+  sendPush(item.createdBy, title, body, `#task-${item.id}`, `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
 }
 
 function stuartTrackingMarkup(item) {

@@ -15,7 +15,7 @@ type StuartCourse = {
 };
 
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const FINAL_NOTIFY_STATUSES = new Set(["Livrée", "Annulée", "Incident"]);
+const FINAL_NOTIFY_STATUSES = new Set(["Terminée", "Annulée", "Incident"]);
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
@@ -52,6 +52,7 @@ Deno.serve(async (request) => {
       if (!changed) continue;
 
       const now = course.updatedAt || new Date().toISOString();
+      const closedByStuart = nextStatus === "Terminée";
       const nextTask = {
         ...task,
         status: nextStatus,
@@ -59,17 +60,26 @@ Deno.serve(async (request) => {
         stuartTrackingUrl: course.trackingUrl || task.stuartTrackingUrl || "",
         stuartEta: course.eta || task.stuartEta || "",
         stuartLastSyncAt: now,
-        stuartTimeline: appendTimeline(task.stuartTimeline, nextStatus, now),
+        stuartTimeline: appendTimeline(task.stuartTimeline, closedByStuart ? "Livrée" : nextStatus, now),
         history: [
           ...arrayValue(task.history),
           `Statut Stuart : ${displayStatus(nextStatus)} — ${dateTimeParis(new Date(now).getTime())}`,
+          ...(closedByStuart ? [
+            `Livraison confirmée automatiquement par Stuart. — ${dateTimeParis(new Date(now).getTime())}`,
+            `Tâche clôturée automatiquement. — ${dateTimeParis(new Date(now).getTime())}`,
+          ] : []),
         ],
+        completedAt: closedByStuart ? now : task.completedAt || null,
+        completedBy: closedByStuart ? "Stuart" : task.completedBy || null,
+        deliveredAt: closedByStuart ? now : task.deliveredAt || null,
         updatedAt: now,
       };
 
       const { error: updateError } = await supabase.from("hub_tasks").update({
         data: nextTask,
         status: nextStatus,
+        completed_at: closedByStuart ? now : task.completedAt || null,
+        delivered_at: closedByStuart ? now : task.deliveredAt || null,
         updated_by: "system",
       }).eq("id", row.id);
       if (updateError) throw updateError;
@@ -99,7 +109,7 @@ function isTrackable(task: Record<string, unknown>) {
   const jobId = String(task.stuartJobId || "").trim();
   if (!jobId || task.stuartTestMode === true) return false;
   if (task.deletedAt || task.archivedAt) return false;
-  return !["Livrée", "Annulée", "Incident", "Erreur"].includes(String(task.status || ""));
+  return !["Livrée", "Terminée", "Terminé", "Annulée", "Incident", "Erreur"].includes(String(task.status || ""));
 }
 
 async function getStuartCourse(taskId: string, task: Record<string, unknown>): Promise<StuartCourse> {
@@ -142,7 +152,7 @@ function mapStuartStatus(status = "") {
   const value = normalizedStatusKey(status);
   if (value.includes("incident") || value.includes("failed") || value.includes("problem")) return "Incident";
   if (value.includes("cancel")) return "Annulée";
-  if (value.includes("delivered") || value.includes("livree")) return "Livrée";
+  if (value.includes("delivered") || value.includes("completed") || value.includes("livree") || value.includes("terminee")) return "Terminée";
   if (value.includes("at dropoff") || value.includes("arrived at dropoff") || value.includes("client")) return "Arrivé client";
   if (value.includes("delivering") || value.includes("dropoff") || value.includes("en livraison")) return "En livraison";
   if (value.includes("picked") || value.includes("pickup complete") || value.includes("recup")) return "Commande récupérée";
@@ -157,7 +167,7 @@ function shouldNotify(status: string, rawStatus: string) {
 }
 
 async function notifyConcernedUsers(taskId: string, task: Record<string, unknown>, status: string, rawStatus: string) {
-  const users = [...new Set([memberId(task.createdBy), memberId(task.assignee)].filter(Boolean))];
+  const users = [...new Set([memberId(task.createdBy)].filter(Boolean))];
   let sent = 0;
   for (const userId of users) {
     const eventId = `stuart:${taskId}:${userId}:${normalizedStatusKey(status)}:${normalizedStatusKey(rawStatus)}`;
@@ -188,7 +198,7 @@ async function notify(userId: string, taskId: string, task: Record<string, unkno
 }
 
 function notificationText(status: string, recipient: string) {
-  if (status === "Livrée") return { title: "✅ Livraison terminée", body: `${recipient} a été livré.` };
+  if (status === "Terminée") return { title: "✅ Livraison Stuart terminée", body: `Client : ${recipient}\nLa tâche a été clôturée automatiquement.` };
   if (status === "Annulée") return { title: "❌ Livraison annulée", body: "La course Stuart a été annulée." };
   return { title: "⚠️ Incident livraison", body: "Vérifier la course Stuart." };
 }
@@ -209,6 +219,7 @@ function displayStatus(status: string) {
     "En livraison": "🟣 En livraison",
     "Arrivé client": "📍 Arrivé chez le client",
     "Livrée": "✅ Livrée",
+    "Terminée": "✅ Terminée",
     "Annulée": "❌ Annulée",
     "Incident": "⚠️ Incident",
   };
