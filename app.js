@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "317";
+const APP_VERSION = "318";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -2538,7 +2538,7 @@ function applyRemoteTask(payload) {
   render();
   if (el.taskDialog.open && openedTaskId === id) {
     el.taskDialog.close();
-    openTask(id);
+    openTask(id, pendingMessageId);
     showToast("Fiche mise à jour en temps réel");
   }
 }
