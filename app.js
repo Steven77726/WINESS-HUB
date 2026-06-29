@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "316";
+const APP_VERSION = "317";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -35,6 +35,8 @@ const MISSION_TYPES = {
   rappel: { label: "📞 Rappel client", statuses: ["Attribué", "Pris en charge", "Terminé"] },
   litige: { label: "⚠️ Litige", statuses: ["Attribué", "Pris en charge", "Terminé"] },
   fournisseur: { label: "🛒 Commande fournisseur", statuses: ["Attribué", "En cours", "Commandée", "Terminée"] },
+  ecart_caisse: { label: "💶 Écart de caisse", statuses: ["Attribué", "Pris en charge", "Validé"] },
+  devis_simple: { label: "📝 Devis", statuses: ["Attribué", "En cours", "Validé"] },
   devis: { label: "🧾 Devis non facturés", statuses: ["À relancer", "Relancé", "Facturé"] },
   instagram: { label: "📱 Relance Instagram", statuses: ["Attribué", "Pris en charge", "Terminé"] },
   autre: { label: "📋 Autre", statuses: ["Attribué", "Pris en charge", "Terminé"] }
@@ -643,7 +645,7 @@ function rubricCard(item) {
   return `<article class="rubric-card ${isCompleted(item) ? "is-done" : ""}">
     <header><div><strong>${item.title}</strong><p>Assigné à ${item.assignee} par ${item.createdBy}</p></div><span class="workflow-badge">${workflowStage(item)}</span></header>
     <div class="rubric-meta"><span>${item.status}</span><span>${item.priority}</span><span>${formatDue(item)}</span>${item.reminderEnabled ? `<span>Rappel ${reminderLabel(item.reminderMode)}</span>` : ""}</div>
-    ${item.missionType === "devis" ? `<div class="quote-summary"><span>${item.client || "Client à préciser"}</span><strong>${formatAmount(item.amount)}</strong></div>` : ""}
+    ${isQuoteType(item.missionType) ? `<div class="quote-summary"><span>${item.client || "Client à préciser"}</span><strong>${formatAmount(item.amount)}</strong></div>` : ""}
     ${item.notes ? `<p class="rubric-notes">${item.notes}</p>` : ""}
     ${media ? `<p class="rubric-media">${media}</p>` : ""}
     <div class="rubric-actions">${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}<button class="open-sheet" data-open-task="${item.id}" type="button">Ouvrir fiche</button></div>
@@ -918,7 +920,7 @@ function openCreator(assignee) {
 }
 
 function missionTypeOptions() {
-  const order = ["preparation", "livraison", "inventaire", "blocage", "litige", "rappel", "fournisseur", "instagram", "autre"];
+  const order = ["preparation", "livraison", "ecart_caisse", "devis_simple", "devis", "inventaire", "blocage", "litige", "rappel", "fournisseur", "instagram", "autre"];
   return order.map((key) => `<option value="${key}">${MISSION_TYPES[key].label.replace(/^[^\s]+\s/, "")}</option>`).join("");
 }
 
@@ -962,8 +964,13 @@ function genericCreatorMarkup(assignee, defaults, type) {
     <label>Date limite<input name="dueDate" type="date" value="${defaults.date}" required></label>
     <label>Heure limite<input name="dueTime" type="time" value="${defaults.time}" required></label>
     <label>Rappel automatique<select name="reminderMode"><option value="none">Aucun</option><option value="1h">Toutes les heures</option><option value="2h">Toutes les 2 heures</option><option value="4h">Toutes les 4 heures</option></select></label>
+    ${isQuoteType(type) ? `<label>Client<input name="client" required placeholder="Nom du client"></label><label>Montant<input name="amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00"></label><label>Date du devis<input name="quoteDate" type="date" value="${defaults.date}" required></label>` : ""}
     <label class="wide">Notes<textarea name="notes" placeholder="Ajouter une note"></textarea></label>
     <button class="primary-action visible wide" type="submit">Valider</button>`;
+}
+
+function isQuoteType(type) {
+  return ["devis", "devis_simple"].includes(type);
 }
 
 function productRowMarkup(product = {}) {
@@ -1257,14 +1264,14 @@ function openTask(id, messageId = "") {
     <section class="assignment-summary"><article><span>Assigné par</span><strong>${item.createdBy}</strong></article><article><span>Assigné à</span><strong>${item.assignee}</strong></article></section>
     <section class="task-detail-grid"><article><span>Statut</span><strong>${isDeleted(item) ? "Supprimée" : item.status}</strong></article><article><span>Priorité</span><strong>${item.priority}</strong></article><article><span>Date limite</span><strong>${formatDue(item)}</strong></article><article><span>Créée</span><strong>${new Date(item.createdAt).toLocaleString("fr-FR")}</strong></article></section>
     ${completionDatesMarkup(item)}
-    ${item.missionType === "devis" ? `<section class="quantity-status"><article><span>Client</span><strong>${item.client || "À préciser"}</strong></article><article><span>Montant</span><strong>${formatAmount(item.amount)}</strong></article><article><span>Date du devis</span><strong>${formatDate(item.quoteDate)}</strong></article></section>` : ""}
+    ${isQuoteType(item.missionType) ? `<section class="quantity-status"><article><span>Client</span><strong>${item.client || "À préciser"}</strong></article><article><span>Montant</span><strong>${formatAmount(item.amount)}</strong></article><article><span>Date du devis</span><strong>${formatDate(item.quoteDate)}</strong></article></section>` : ""}
     ${item.missionType === "livraison" ? deliveryDetailMarkup(item) : ""}
     ${item.missionType !== "preparation" && (item.requested || item.available) ? `<section class="quantity-status"><article><span>Demandé</span><strong>${item.requested || 0}</strong></article><article><span>Disponible</span><strong>${item.available || 0}</strong></article><article class="${missingQuantity(item) ? "has-missing" : ""}"><span>Manquant</span><strong>${missingQuantity(item)}</strong></article></section>` : ""}
     ${missingQuantity(item) ? `<section class="missing-banner">⚠️ Produit manquant : ${missingQuantity(item)}</section>` : ""}
     ${item.missionType === "preparation" ? preparationDetailMarkup(item) : ""}
     <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
     ${item.reminderEnabled ? `<section class="auto-reminder-state">Rappel auto ${reminderLabel(item.reminderMode)} activé${item.lastReminderAt ? ` · dernier envoi ${new Date(item.lastReminderAt).toLocaleString("fr-FR")}` : ""}</section>` : ""}
-    <section class="task-form single"><label>Instructions<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType !== "preparation" ? `<div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>` : ""}${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="1h" ${item.reminderMode === "1h" ? "selected" : ""}>Toutes les heures</option><option value="2h" ${item.reminderMode === "2h" ? "selected" : ""}>Toutes les 2h</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option></select></label></section>
+    <section class="task-form single"><label>Instructions<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType !== "preparation" ? `<div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>` : ""}${isQuoteType(item.missionType) ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="1h" ${item.reminderMode === "1h" ? "selected" : ""}>Toutes les heures</option><option value="2h" ${item.reminderMode === "2h" ? "selected" : ""}>Toutes les 2h</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option></select></label></section>
     ${discussionMarkup(item)}
     <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) ? `<button id="validateTask" class="complete-action" type="button">✅ Valider la tâche</button>` : ""}${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
@@ -1735,7 +1742,7 @@ function saveTaskDetails(item) {
   }
   item.requested = document.querySelector("#taskRequested") ? Number(document.querySelector("#taskRequested").value || 0) : (item.products || []).reduce((total, product) => total + Number(product.requested || 0), 0);
   item.available = document.querySelector("#taskAvailable") ? Number(document.querySelector("#taskAvailable").value || 0) : (item.products || []).reduce((total, product) => total + Number(product.available || 0), 0);
-  if (item.missionType === "devis") {
+  if (isQuoteType(item.missionType)) {
     item.client = document.querySelector("#taskClient").value;
     item.amount = Number(document.querySelector("#taskAmount").value || 0);
     item.quoteDate = document.querySelector("#taskQuoteDate").value;
