@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "315";
+const APP_VERSION = "316";
 const IS_FILE_MODE = location.protocol === "file:";
 let supabaseClient = null;
 let realtimeChannel = null;
@@ -47,6 +47,7 @@ const members = [
   { id: "steven", name: "Steven", role: "Staff", group: "staff" },
   { id: "theo", name: "Théo", role: "Staff", group: "staff" }
 ];
+const mentionableMembers = [...members, { id: "didier", name: "Didier", role: "Équipe" }];
 
 const seedTasks = [
   task("azran", "Préparer commande Azran", "preparation", "Théo", "David", "🔥 Urgente", "Aujourd'hui 15h", "Préparer la commande magasin.", 25, "Attribué", 12, 10),
@@ -82,6 +83,7 @@ let homeExpiryTimer = 0;
 let stuartPollTimer = 0;
 let activeSearchFilter = "all";
 let searchInputTimer = 0;
+let pendingMessageId = "";
 
 const el = {
   direction: document.querySelector("#directionGrid"),
@@ -254,6 +256,7 @@ function activateProfile(member) {
   el.profileGate.close();
   renderIdentity();
   render();
+  handleHash();
   addActivity(`${member.name} a validé son profil sur cet appareil`);
   showToast(`Profil ${member.name} actif`);
 }
@@ -328,7 +331,14 @@ function migrateTask(item, databaseUpdatedAt = null) {
   const createdBy = item.assignedBy || item.createdBy || "Inconnu";
   const reminderMode = ["1h", "2h", "4h", "daily"].includes(item.reminderMode) ? item.reminderMode : "none";
   const completedAt = item.completedAt || (isCompletedStatus(status) ? databaseUpdatedAt || item.updatedAt || new Date(item.createdAt || Date.now()).toISOString() : null);
-  return { ...item, missionType, status, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, completedAt, reminderMode, reminderEnabled: reminderMode !== "none" && item.reminderEnabled !== false && !isCompletedStatus(status), lastReminderAt: item.lastReminderAt || null, seenBy: item.seenBy || [], history: item.history || [], products: normalizeProducts(item), requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
+  const messages = (Array.isArray(item.messages) ? item.messages : []).map((message) => ({
+    id: message.id || `message-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    author: message.author || "Inconnu",
+    content: String(message.content || ""),
+    createdAt: message.createdAt || new Date().toISOString(),
+    readBy: Array.isArray(message.readBy) ? message.readBy : []
+  }));
+  return { ...item, missionType, status, assignee, createdBy, assignedTo: assignee, assignedBy: createdBy, completedAt, reminderMode, reminderEnabled: reminderMode !== "none" && item.reminderEnabled !== false && !isCompletedStatus(status), lastReminderAt: item.lastReminderAt || null, seenBy: item.seenBy || [], messages, history: item.history || [], products: normalizeProducts(item), requested: Number(item.requested || 0), available: Number(item.available || 0), amount: Number(item.amount || 0) };
 }
 
 function legacyMissionType(category = "") {
@@ -569,12 +579,14 @@ function memberCard(member) {
 }
 
 function taskChip(item) {
+  const unread = unreadMessageCount(item);
+  const unreadBadge = unread ? `<span class="message-unread-badge" aria-label="${unread} message${unread > 1 ? "s" : ""} non lu${unread > 1 ? "s" : ""}">💬 ${unread}</span>` : "";
   if (isCompleted(item)) {
-    return `<button class="task-chip completed completed-${finalStatusKind(item.status) || "done"}" data-open-task="${item.id}" type="button"><span class="task-chip-title">${escapeHtml(item.title)}</span><span class="task-chip-status">${escapeHtml(item.missionType === "preparation" ? preparationHomeStatus(item) : `${completedStatusIcon(item.status)} ${item.status}`)}</span></button>`;
+    return `<button class="task-chip completed completed-${finalStatusKind(item.status) || "done"}" data-open-task="${item.id}" type="button"><span class="task-chip-title">${escapeHtml(item.title)}</span><span class="task-chip-status">${escapeHtml(item.missionType === "preparation" ? preparationHomeStatus(item) : `${completedStatusIcon(item.status)} ${item.status}`)}</span>${unreadBadge}</button>`;
   }
   const prefix = isOverdue(item) ? "⏰ " : item.priority.includes("Urgente") ? "🔥 " : "";
   const urgent = isOverdue(item) || item.priority.includes("Urgente") ? " urgent" : "";
-  return `<button class="task-chip${urgent}" data-open-task="${item.id}" type="button">${prefix}${escapeHtml(item.title)}</button>`;
+  return `<button class="task-chip${urgent}" data-open-task="${item.id}" type="button"><span>${prefix}${escapeHtml(item.title)}</span>${unreadBadge}</button>`;
 }
 
 function renderMyTasks() {
@@ -584,8 +596,9 @@ function renderMyTasks() {
 }
 
 function toolTask(item) {
+  const unread = unreadMessageCount(item);
   return `<article class="tool-card ${isOverdue(item) ? "red" : "gold"}">
-    <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}</button>
+    <button class="task-title-button" data-open-task="${item.id}" type="button">${item.title}${unread ? ` <span class="message-unread-badge">💬 ${unread}</span>` : ""}</button>
     <p>${typeLabel(item)} · ${item.status} · par ${item.createdBy} · ${formatDue(item)}</p>
     ${missingQuantity(item) ? `<p class="missing-alert">⚠️ Manquant : ${missingQuantity(item)}</p>` : ""}
     <div class="task-actions-row">${nextStatuses(item).map((status) => `<button data-status="${item.id}:${status}" type="button">${status}</button>`).join("")}${item.createdBy === CURRENT_USER ? `<button data-remind="${item.id}" type="button">Relancer</button>` : ""}</div>
@@ -1178,7 +1191,7 @@ function createDeliveryTask(event) {
   save(item);
   render();
   el.taskDialog.close();
-  sendPush(assignee, "Nouvelle livraison", `${CURRENT_USER} vous a assigné : ${item.title}`, `#task-${item.id}`, `task:${item.id}:delivery-created`);
+  sendPush(assignee, "Nouvelle livraison", `${CURRENT_USER} vous a assigné : ${item.title}`, taskDeepLink(item.id), `task:${item.id}:delivery-created`);
   showToast("Livraison créée");
 }
 
@@ -1211,7 +1224,7 @@ function createTask(event, assignee) {
   const products = missionType === "preparation" ? collectProductsFromForm() : [];
   const requested = products.length ? products.reduce((total, product) => total + Number(product.requested || 0), 0) : Number(form.get("requested") || 0);
   const available = products.length ? products.reduce((total, product) => total + Number(product.available || 0), 0) : Number(form.get("available") || 0);
-  const item = { id: `task-${Date.now()}`, title: form.get("title"), missionType, assignee: assignedTo, createdBy: CURRENT_USER, assignedTo, assignedBy: CURRENT_USER, priority: form.get("priority"), dueDate: form.get("dueDate"), dueTime: form.get("dueTime"), due: formatDeadline(form.get("dueDate"), form.get("dueTime")), notes: form.get("notes"), requested, available, products, client: form.get("client") || "", amount: Number(form.get("amount") || 0), quoteDate: form.get("quoteDate") || "", status: statusesForType(missionType)[0], reminderMode, reminderEnabled: reminderMode !== "none", lastReminderAt: null, createdAt: Date.now(), seenBy: [], history: [`Créée par ${CURRENT_USER} — ${dateTimeNow()}`] };
+  const item = { id: `task-${Date.now()}`, title: form.get("title"), missionType, assignee: assignedTo, createdBy: CURRENT_USER, assignedTo, assignedBy: CURRENT_USER, priority: form.get("priority"), dueDate: form.get("dueDate"), dueTime: form.get("dueTime"), due: formatDeadline(form.get("dueDate"), form.get("dueTime")), notes: form.get("notes"), requested, available, products, client: form.get("client") || "", amount: Number(form.get("amount") || 0), quoteDate: form.get("quoteDate") || "", status: statusesForType(missionType)[0], reminderMode, reminderEnabled: reminderMode !== "none", lastReminderAt: null, createdAt: Date.now(), seenBy: [], messages: [], history: [`Créée par ${CURRENT_USER} — ${dateTimeNow()}`] };
   if (products.length) {
     item.history.push(`Produits ajoutés : ${products.map((product) => `${product.name || "Produit"} (${product.requested})`).join(", ")} — ${dateTimeNow()}`);
   }
@@ -1221,22 +1234,24 @@ function createTask(event, assignee) {
   save(item); render(); el.taskDialog.close();
   const pushTitle = item.missionType === "livraison" ? "Nouvelle livraison" : item.priority.includes("Urgente") ? "🔥 Nouvelle tâche urgente" : "Nouvelle tâche Winess Hub";
   const pushBody = item.missionType === "preparation" ? `${CURRENT_USER} vous a assigné une préparation de commande : ${item.title}` : `${CURRENT_USER} vous a assigné une nouvelle tâche : ${item.title}`;
-  sendPush(assignedTo, pushTitle, pushBody, `#task-${item.id}`, `task:${item.id}:assigned`);
+  sendPush(assignedTo, pushTitle, pushBody, taskDeepLink(item.id), `task:${item.id}:assigned`);
 }
 
-function openTask(id) {
+function openTask(id, messageId = "") {
   if (!requireIdentity()) return;
   let item = state.tasks.find((task) => task.id === id);
   if (!item) return;
+  if (el.taskDialog.open) el.taskDialog.close();
   openedTaskId = id;
+  pendingMessageId = messageId;
   if (!item.seenBy.some((seen) => seen.user === CURRENT_USER)) {
     item.seenBy.push({ user: CURRENT_USER, date: dateNow(), time: timeNow() });
     item.history.push(`👁 Vu par ${CURRENT_USER} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a vu ${item.title}`);
-    sendPush(item.createdBy, "Tâche vue", `${CURRENT_USER} a vu : ${item.title}`, `#task-${item.id}`, `task:${item.id}:seen:${memberIdForName(CURRENT_USER)}`);
     save(item); render();
     item = state.tasks.find((task) => task.id === id);
   }
+  markDiscussionRead(item);
   el.taskDetails.innerHTML = `<header class="member-header"><div><p class="eyebrow">${typeLabel(item)}</p><h2 id="taskTitleDisplay">${escapeHtml(item.title)}</h2><div class="title-actions">${isDeleted(item) ? "" : `<button id="editTaskTitle" type="button">✏️ Modifier le titre</button>`}</div><p class="assignment-line">Mission assignée à ${item.assignee} par ${item.createdBy} <button class="whatsapp-share" id="shareTask" type="button">WhatsApp</button></p></div></header>
     <section class="title-editor" id="taskTitleEditor" hidden><label>Nouveau titre<input id="taskTitleInput" value="${escapeHtml(item.title)}" maxlength="160"></label></section>
     <section class="assignment-summary"><article><span>Assigné par</span><strong>${item.createdBy}</strong></article><article><span>Assigné à</span><strong>${item.assignee}</strong></article></section>
@@ -1249,7 +1264,8 @@ function openTask(id) {
     ${item.missionType === "preparation" ? preparationDetailMarkup(item) : ""}
     <section class="read-status"><h3>Vu par</h3>${item.seenBy.map((seen) => `<p>👁 Vu par ${seen.user} — ${seen.date || dateNow()} ${seen.time}</p>`).join("") || `<p>Pas encore vue</p>`}</section>
     ${item.reminderEnabled ? `<section class="auto-reminder-state">Rappel auto ${reminderLabel(item.reminderMode)} activé${item.lastReminderAt ? ` · dernier envoi ${new Date(item.lastReminderAt).toLocaleString("fr-FR")}` : ""}</section>` : ""}
-    <section class="task-form single"><label>Notes<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType !== "preparation" ? `<div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>` : ""}${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="1h" ${item.reminderMode === "1h" ? "selected" : ""}>Toutes les heures</option><option value="2h" ${item.reminderMode === "2h" ? "selected" : ""}>Toutes les 2h</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option></select></label></section>
+    <section class="task-form single"><label>Instructions<textarea id="taskNotes" ${isDeleted(item) ? "disabled" : ""}>${item.notes || ""}</textarea></label><div class="quantity-edit"><label>Date limite<input id="taskDueDate" type="date" value="${item.dueDate || ""}" ${isDeleted(item) ? "disabled" : ""}></label><label>Heure limite<input id="taskDueTime" type="time" value="${item.dueTime || ""}" ${isDeleted(item) ? "disabled" : ""}></label></div>${item.missionType !== "preparation" ? `<div class="quantity-edit"><label>Demandé<input id="taskRequested" type="number" min="0" value="${item.requested || 0}" ${isDeleted(item) ? "disabled" : ""}></label><label>Disponible<input id="taskAvailable" type="number" min="0" value="${item.available || 0}" ${isDeleted(item) ? "disabled" : ""}></label></div>` : ""}${item.missionType === "devis" ? `<div class="quantity-edit"><label>Client<input id="taskClient" value="${item.client || ""}"></label><label>Montant<input id="taskAmount" type="number" min="0" step="0.01" value="${item.amount || 0}"></label></div><label>Date du devis<input id="taskQuoteDate" type="date" value="${item.quoteDate || ""}"></label>` : ""}<label>Statut<select id="taskStatus" ${isDeleted(item) ? "disabled" : ""}>${statusesFor(item).map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>Rappel automatique<select id="taskReminderMode" ${isDeleted(item) || isCompleted(item) ? "disabled" : ""}><option value="none" ${item.reminderMode === "none" ? "selected" : ""}>Aucun rappel</option><option value="1h" ${item.reminderMode === "1h" ? "selected" : ""}>Toutes les heures</option><option value="2h" ${item.reminderMode === "2h" ? "selected" : ""}>Toutes les 2h</option><option value="4h" ${item.reminderMode === "4h" ? "selected" : ""}>Toutes les 4h</option></select></label></section>
+    ${discussionMarkup(item)}
     <div class="task-form-actions">${isDeleted(item) ? "" : `<button id="saveTask" type="button">Valider</button>${!isCompleted(item) ? `<button id="validateTask" class="complete-action" type="button">✅ Valider la tâche</button>` : ""}${!isCompleted(item) && item.createdBy === CURRENT_USER ? `<button id="remindTask" type="button">Relancer</button>` : ""}<button id="deleteTask" class="danger-action" type="button">Supprimer</button>`}<button id="shareTaskBottom" class="whatsapp-action" type="button">Partager WhatsApp</button></div>
     <details class="task-history"><summary>Historique</summary>${item.history.map((line) => `<p>${line}</p>`).join("")}</details>`;
   document.querySelector("#saveTask")?.addEventListener("click", () => saveTaskDetails(item));
@@ -1270,7 +1286,9 @@ function openTask(id) {
   document.querySelector("#validateTask")?.addEventListener("click", () => validateTask(item));
   document.querySelector("#remindTask")?.addEventListener("click", () => remindTask(item.id));
   document.querySelector("#deleteTask")?.addEventListener("click", () => deleteTask(item));
+  bindDiscussion(item);
   el.taskDialog.showModal();
+  focusDiscussionMessage(messageId);
 }
 
 function validateTask(item) {
@@ -1589,7 +1607,7 @@ function notifyStuart(item, event) {
   const notification = notifications[event] || (isIncident ? notifications.incident : isLate ? notifications.late : null);
   if (!notification) return;
   const [title, body] = notification;
-  sendPush(item.createdBy, title, body, `#task-${item.id}`, `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
+  sendPush(item.createdBy, title, body, taskDeepLink(item.id), `stuart:${item.id}:${event}:${item.stuartStatus || item.status}`);
 }
 
 function stuartTrackingMarkup(item) {
@@ -1698,10 +1716,6 @@ function finishPreparation(item) {
   save(item);
   render();
   el.taskDialog.close();
-  const body = everythingAvailable
-    ? `${CURRENT_USER} a terminé la préparation. Tout est disponible.`
-    : `${CURRENT_USER} a terminé la préparation. Commande prête avec manquants : ${missing.map((product) => product.name || "Produit").join(", ")}`;
-  sendPush(item.createdBy, everythingAvailable ? "Commande prête" : "Commande prête avec manquants", body, `#task-${item.id}`, `task:${item.id}:preparation-finished:${item.status}`);
   showToast(everythingAvailable ? "Préparation prête" : "Préparation prête avec manquants");
 }
 
@@ -1741,7 +1755,6 @@ function saveTaskDetails(item) {
   if (missingQuantity(item) && missingQuantity(item) !== previousMissing) {
     item.history.push(`⚠️ Manquant signalé : ${missingQuantity(item)} — ${dateTimeNow()}`);
     addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
-    sendPush(item.createdBy, "Produit manquant", `${item.title} : manquant ${missingQuantity(item)}`, `#task-${item.id}`, `task:${item.id}:missing:${missingQuantity(item)}`);
   }
   save(item); render(); el.taskDialog.close();
   showToast(isCompleted(item) ? "Tâche déplacée dans les archives" : "Modifications enregistrées");
@@ -1769,13 +1782,8 @@ function recordStatusActivity(item, status, previousStatus = "") {
   addActivity(`${CURRENT_USER} ${wording}`);
   if (item.missionType === "livraison" && item.stuartJobId) return;
   const eventId = `task:${item.id}:status:${status}`;
-  if (["En cours", "Pris en charge", "En livraison"].includes(status)) sendPush(item.createdBy, "Tâche prise en charge", `${CURRENT_USER} a pris en charge la tâche : ${item.title}`, `#task-${item.id}`, eventId);
-  if (status === "Prête") sendPush(item.createdBy, "Commande prête", `${item.title} est prête`, `#task-${item.id}`, eventId);
-  if (status === "Prête avec manquants") sendPush(item.createdBy, "Commande prête avec manquants", `${item.title} est prête avec manquants`, `#task-${item.id}`, eventId);
-  if (status === "Récupérée") sendPush(item.createdBy, "Commande récupérée", `${item.title} a été récupérée`, `#task-${item.id}`, eventId);
-  if (status === "Prêt départ") sendPush(item.createdBy, "Livraison prête", `${item.title} est prête au départ`, `#task-${item.id}`, eventId);
-  if (status === "Livré") sendPush(item.createdBy, "Livraison livrée", `${item.title} a été livrée`, `#task-${item.id}`, eventId);
-  if (isCompleted(item) && !["Prête", "Prête avec manquants", "Récupérée", "Livré"].includes(status)) sendPush(item.createdBy, "Tâche terminée", `${CURRENT_USER} a validé la tâche : ${item.title}`, `#task-${item.id}`, eventId);
+  if (status === "Livré") sendPush(item.createdBy, "Livraison livrée", `${item.title} a été livrée`, taskDeepLink(item.id), eventId);
+  if (isCompleted(item) && !["Prête", "Prête avec manquants", "Récupérée", "Livré"].includes(status)) sendPush(item.createdBy, "Tâche terminée", `${CURRENT_USER} a validé la tâche : ${item.title}`, taskDeepLink(item.id), eventId);
 }
 
 function shareTask(item) {
@@ -1784,6 +1792,142 @@ function shareTask(item) {
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
   const opened = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   if (!opened) location.href = whatsappUrl;
+}
+
+function discussionMarkup(item) {
+  const messages = item.messages || [];
+  return `<section class="task-discussion" id="taskDiscussion">
+    <header><div><p class="eyebrow">Discussion</p><h3>💬 Discussion</h3></div><span>${messages.length} message${messages.length > 1 ? "s" : ""}</span></header>
+    <div class="discussion-messages" id="discussionMessages">
+      ${messages.length ? messages.map(messageMarkup).join("") : `<div class="discussion-empty"><strong>Aucun message.</strong><span>Commencez une discussion ou mentionnez un collaborateur avec @.</span></div>`}
+    </div>
+    ${isDeleted(item) ? "" : `<div class="discussion-composer">
+      <textarea id="discussionInput" rows="2" placeholder="Écrire un message… Utilisez @ pour mentionner"></textarea>
+      <div class="mention-suggestions" id="mentionSuggestions" hidden></div>
+      <button id="sendDiscussionMessage" type="button">Envoyer</button>
+    </div>`}
+  </section>`;
+}
+
+function messageMarkup(message) {
+  const member = mentionableMembers.find((candidate) => candidate.name === message.author);
+  const avatar = member && state.avatars[member.id];
+  const readers = (message.readBy || []).filter((read) => read.user !== message.author);
+  return `<article class="discussion-message" id="message-${escapeHtml(message.id)}">
+    <div class="discussion-avatar">${avatar ? `<img src="${avatar}" alt="">` : escapeHtml(message.author[0] || "?")}</div>
+    <div class="discussion-bubble">
+      <header><strong>${escapeHtml(message.author)}</strong><time>${formatMessageTime(message.createdAt)}</time></header>
+      <p>${renderMessageContent(message.content)}</p>
+      <small>${readers.length ? `👀 Vu par ${readers.map((read) => `${escapeHtml(read.user)} à ${escapeHtml(read.time || "")}`).join(", ")}` : "Pas encore vu"}</small>
+    </div>
+  </article>`;
+}
+
+function renderMessageContent(content) {
+  return escapeHtml(content).replace(/(^|\s)@([\p{L}-]+)/gu, '$1<span class="mention-token">@$2</span>').replace(/\n/g, "<br>");
+}
+
+function formatMessageTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function unreadMessageCount(item) {
+  if (!CURRENT_USER) return 0;
+  return (item.messages || []).filter((message) => message.author !== CURRENT_USER && !(message.readBy || []).some((read) => read.user === CURRENT_USER)).length;
+}
+
+function markDiscussionRead(item) {
+  let changed = false;
+  (item.messages || []).forEach((message) => {
+    message.readBy ||= [];
+    if (message.author !== CURRENT_USER && !message.readBy.some((read) => read.user === CURRENT_USER)) {
+      message.readBy.push({ user: CURRENT_USER, time: timeNow(), at: new Date().toISOString() });
+      changed = true;
+    }
+  });
+  if (changed) save(item);
+}
+
+function bindDiscussion(item) {
+  const input = document.querySelector("#discussionInput");
+  const suggestions = document.querySelector("#mentionSuggestions");
+  if (!input || !suggestions) return;
+  input.addEventListener("input", () => renderMentionSuggestions(input, suggestions));
+  input.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") addDiscussionMessage(item);
+  });
+  suggestions.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-mention-name]");
+    if (!option) return;
+    insertMention(input, option.dataset.mentionName);
+    suggestions.hidden = true;
+  });
+  document.querySelector("#sendDiscussionMessage")?.addEventListener("click", () => addDiscussionMessage(item));
+}
+
+function renderMentionSuggestions(input, container) {
+  const beforeCursor = input.value.slice(0, input.selectionStart);
+  const match = beforeCursor.match(/(?:^|\s)@([\p{L}-]*)$/u);
+  if (!match) {
+    container.hidden = true;
+    return;
+  }
+  const query = match[1].toLocaleLowerCase("fr");
+  const matches = mentionableMembers.filter((member) => member.name !== CURRENT_USER && member.name.toLocaleLowerCase("fr").startsWith(query));
+  container.innerHTML = matches.map((member) => `<button data-mention-name="${escapeHtml(member.name)}" type="button">@${escapeHtml(member.name)}</button>`).join("");
+  container.hidden = !matches.length;
+}
+
+function insertMention(input, name) {
+  const before = input.value.slice(0, input.selectionStart).replace(/@[\p{L}-]*$/u, `@${name} `);
+  const after = input.value.slice(input.selectionEnd);
+  input.value = before + after;
+  input.focus();
+  input.setSelectionRange(before.length, before.length);
+}
+
+function addDiscussionMessage(item) {
+  const input = document.querySelector("#discussionInput");
+  const content = input?.value.trim();
+  if (!content) return;
+  const message = {
+    id: crypto.randomUUID?.() || `message-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    author: CURRENT_USER,
+    content,
+    createdAt: new Date().toISOString(),
+    readBy: [{ user: CURRENT_USER, time: timeNow(), at: new Date().toISOString() }]
+  };
+  item.messages ||= [];
+  item.messages.push(message);
+  item.history.push(`Message ajouté par ${CURRENT_USER} — ${dateTimeNow()}`);
+  save(item);
+  render();
+  const mentioned = mentionableMembers.filter((member) => member.name !== CURRENT_USER && new RegExp(`(^|\\s)@${escapeRegExp(member.name)}(?=\\s|$|[.,!?])`, "iu").test(content));
+  mentioned.forEach((member) => sendPush(
+    member.name,
+    "💬 Mention dans Winess Hub",
+    `${CURRENT_USER} vous a mentionné dans : « ${item.title} »`,
+    taskDeepLink(item.id, message.id),
+    `task:${item.id}:mention:${message.id}:${member.id}`
+  ));
+  if (el.taskDialog.open) el.taskDialog.close();
+  openTask(item.id, message.id);
+}
+
+function focusDiscussionMessage(messageId) {
+  if (!messageId) return;
+  requestAnimationFrame(() => {
+    const message = document.getElementById(`message-${messageId}`);
+    if (!message) return;
+    message.scrollIntoView({ behavior: "smooth", block: "center" });
+    message.classList.add("is-highlighted");
+    window.setTimeout(() => message.classList.remove("is-highlighted"), 4000);
+  });
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function updateStatus(value) {
@@ -1825,7 +1969,7 @@ async function remindTask(id) {
   addActivity(`${CURRENT_USER} a relancé ${item.assignee} pour ${item.title}`);
   save(item); render();
   if (el.taskDialog.open) document.querySelector(".task-history")?.insertAdjacentHTML("beforeend", `<p>${historyLine}</p>`);
-  const pushed = await sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} vous a relancé pour la tâche : ${item.title}`, `#task-${item.id}`, `task:${item.id}:remind:${bucket}`);
+  const pushed = await sendPush(item.assignee, "Tâche relancée", `${CURRENT_USER} vous a relancé pour la tâche : ${item.title}`, taskDeepLink(item.id), `task:${item.id}:remind:${bucket}`);
   showToast(pushed ? `Relance envoyée à ${item.assignee}` : `Relance enregistrée pour ${item.assignee}`);
 }
 
@@ -2002,7 +2146,10 @@ function showView(name) {
 
 function handleHash() {
   const hash = location.hash.slice(1);
-  if (hash.startsWith("task-")) return openTask(hash.slice(5));
+  if (hash.startsWith("task-")) {
+    const [taskId, messageId = ""] = hash.slice(5).split("&message=");
+    return openTask(decodeURIComponent(taskId), decodeURIComponent(messageId));
+  }
   if (hash.startsWith("view-")) return showView(hash.slice(5));
   showView("accueil");
 }
@@ -2107,7 +2254,7 @@ async function enablePush() {
 }
 
 async function sendPush(userName, title, body, url, eventId = "") {
-  const user = members.find((member) => member.name === userName);
+  const user = mentionableMembers.find((member) => member.name === userName);
   if (!user) return false;
   try {
     const notificationUrl = absoluteNotificationUrl(url);
@@ -2127,6 +2274,11 @@ function absoluteNotificationUrl(value) {
   } catch {
     return APP_BASE_URL;
   }
+}
+
+function taskDeepLink(taskId, messageId = "") {
+  const messagePart = messageId ? `&message=${encodeURIComponent(messageId)}` : "";
+  return `${APP_BASE_URL}index.html?v=${APP_VERSION}#task-${encodeURIComponent(taskId)}${messagePart}`;
 }
 
 function callEdgeFunction(functionName, body) {
@@ -2247,6 +2399,7 @@ async function initializeSupabase() {
     const profilesToMigrate = Object.entries(state.avatars).filter(([id, avatar]) => !knownProfileIds.has(id) && String(avatar).startsWith("data:image/"));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     render();
+    if (CURRENT_USER && location.hash.startsWith("#task-")) handleHash();
     setSyncState("Synchronisé", true);
 
     realtimeChannel = supabaseClient.channel("winess-hub-live", { config: { broadcast: { self: false } } })
