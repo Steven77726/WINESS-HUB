@@ -3,6 +3,7 @@ import { finalStatusKind, isCompletedStatus, normalizedStatusKey } from "./task-
 const STORAGE_KEY = "winess-hub:v260";
 const DEVICE_PROFILE_KEY = "winess-hub:device-profile:v1";
 const DEVICE_ID_KEY = "winess-hub:device-id";
+const LAST_TASK_KEY = "winess-hub:last-task:v1";
 const PROFILE_VALIDITY = 30 * 24 * 60 * 60 * 1000;
 const deviceSession = readDeviceSession();
 let CURRENT_USER = deviceSession?.name || "";
@@ -11,7 +12,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "325";
+const APP_VERSION = "326";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
@@ -95,6 +96,7 @@ const el = {
   direction: document.querySelector("#directionGrid"),
   staff: document.querySelector("#staffGrid"),
   urgent: document.querySelector("#urgentList"),
+  smartHome: document.querySelector("#smartHome"),
   myTasks: document.querySelector("#myTasksList"),
   badge: document.querySelector("#myTasksBadge"),
   activity: document.querySelector("#activityList"),
@@ -416,6 +418,8 @@ function initializeIdentity() {
   CURRENT_USER = member.name;
   renderIdentity();
   render();
+  handleHash();
+  maybeResumeLastTask();
 }
 
 function renderIdentity() {
@@ -506,6 +510,7 @@ function activateProfile(member) {
   renderIdentity();
   render();
   handleHash();
+  maybeResumeLastTask();
   addActivity(`${member.name} a validé son profil sur cet appareil`);
   showToast(`Profil ${member.name} actif`);
 }
@@ -621,6 +626,7 @@ function save(changedTask = null) {
 
 function render() {
   renderIdentity();
+  renderSmartHome();
   renderUrgencies();
   el.direction.innerHTML = members.filter((m) => m.group === "direction").map(memberCard).join("");
   el.staff.innerHTML = members.filter((m) => m.group === "staff").map(memberCard).join("");
@@ -692,6 +698,9 @@ function homeEmptyLabel() {
     done: "Aucune tâche terminée",
     archived: "Aucune archive",
     urgent: "Aucune urgence",
+    unread: "Aucun message non lu",
+    today: "Aucune tâche du jour",
+    devis: "Aucun devis à relancer",
     livraison: "Aucune livraison",
     commandes: "Aucune commande",
     inventaire: "Aucun inventaire",
@@ -811,6 +820,77 @@ function productStateLabel(product) {
 function preparationHomeStatus(item) {
   if (item.status === "Prête avec manquants") return "⚠️ Prête avec manquants";
   return `${completedStatusIcon(item.status)} ${item.status}`;
+}
+
+function renderSmartHome() {
+  if (!el.smartHome) return;
+  const userName = CURRENT_USER || "Steven";
+  const cards = smartHomeCards();
+  const lastTask = getLastOpenedTask();
+  el.smartHome.innerHTML = `<header class="smart-home-header">
+      <div><p class="eyebrow">Accueil intelligent</p><h1>Bonjour ${escapeHtml(userName)}</h1></div>
+    </header>
+    <div class="smart-home-grid">
+      ${cards.map((card) => `<button class="smart-home-card" data-smart-filter="${card.filter}" type="button"><span>${card.icon}</span><strong>${card.label}</strong><em>${card.count}</em></button>`).join("")}
+    </div>
+    <button class="resume-card ${lastTask ? "is-ready" : ""}" ${lastTask ? `data-open-task="${lastTask.id}"` : ""} type="button">
+      <span>▶️ Reprendre où je me suis arrêté</span>
+      <strong>${lastTask ? escapeHtml(lastTask.title) : "Aucune fiche récente"}</strong>
+    </button>`;
+}
+
+function smartHomeCards() {
+  const visible = state.tasks.filter((item) => !isDeleted(item));
+  const active = visible.filter((item) => !isCompleted(item));
+  const today = new Date().toISOString().slice(0, 10);
+  const unread = visible.reduce((total, item) => total + unreadMessageCount(item), 0);
+  return [
+    { icon: "📦", label: "Commandes à préparer", filter: "commandes", count: active.filter((item) => item.missionType === "preparation").length },
+    { icon: "🚚", label: "Livraisons Stuart", filter: "livraison", count: active.filter((item) => item.missionType === "livraison").length },
+    { icon: "⚠️", label: "Urgences", filter: "urgent", count: active.filter((item) => item.priority?.includes("Urgente") || isOverdue(item)).length },
+    { icon: "💬", label: "Messages non lus", filter: "unread", count: unread },
+    { icon: "📅", label: "Devis à relancer", filter: "devis", count: active.filter((item) => item.missionType === "devis" || item.missionType === "devis_simple").length },
+    { icon: "📋", label: "Tâches du jour", filter: "today", count: active.filter((item) => item.dueDate === today || String(item.due || "").toLowerCase().includes("aujourd")).length }
+  ];
+}
+
+function getLastOpenedTask() {
+  try {
+    const saved = JSON.parse(storageGet(LAST_TASK_KEY) || "null");
+    if (!saved?.id) return null;
+    const task = state.tasks.find((item) => item.id === saved.id && !isDeleted(item));
+    return task || null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberLastOpenedTask(item, messageId = "") {
+  if (!item?.id || isDeleted(item)) return;
+  storageSet(LAST_TASK_KEY, JSON.stringify({ id: item.id, messageId, title: item.title, savedAt: Date.now() }));
+}
+
+function resumeLastOpenedTask() {
+  const task = getLastOpenedTask();
+  if (!task) return false;
+  try {
+    const saved = JSON.parse(storageGet(LAST_TASK_KEY) || "null");
+    openTask(task.id, saved?.messageId || "");
+    return true;
+  } catch {
+    openTask(task.id);
+    return true;
+  }
+}
+
+function maybeResumeLastTask() {
+  if (!CURRENT_USER || location.hash.startsWith("#task-")) return;
+  const task = getLastOpenedTask();
+  if (!task) return;
+  window.setTimeout(() => {
+    if (!CURRENT_USER || location.hash.startsWith("#task-") || el.taskDialog.open) return;
+    resumeLastOpenedTask();
+  }, 260);
 }
 
 function renderUrgencies() {
@@ -1049,7 +1129,10 @@ function matchesSearchFilter(item) {
   if (activeSearchFilter === "active") return !isArchived(item);
   if (activeSearchFilter === "done") return isCompleted(item);
   if (activeSearchFilter === "archived") return isArchived(item);
-  if (activeSearchFilter === "urgent") return item.priority?.includes("Urgente") && !isCompleted(item);
+  if (activeSearchFilter === "urgent") return (item.priority?.includes("Urgente") || isOverdue(item)) && !isCompleted(item);
+  if (activeSearchFilter === "unread") return unreadMessageCount(item) > 0;
+  if (activeSearchFilter === "today") return !isArchived(item) && (item.dueDate === new Date().toISOString().slice(0, 10) || String(item.due || "").toLowerCase().includes("aujourd"));
+  if (activeSearchFilter === "devis") return ["devis", "devis_simple"].includes(item.missionType);
   if (activeSearchFilter === "livraison") return item.missionType === "livraison";
   if (activeSearchFilter === "commandes") return ["preparation", "fournisseur"].includes(item.missionType);
   if (activeSearchFilter === "inventaire") return item.missionType === "inventaire";
@@ -1522,6 +1605,7 @@ function openTask(id, messageId = "", options = {}) {
   if (location.hash.startsWith("#view-")) lastViewHash = location.hash;
   openedTaskId = id;
   pendingMessageId = messageId;
+  rememberLastOpenedTask(item, messageId);
   if (options.updateRoute !== false) setTaskRoute(id, messageId);
   if (!item.seenBy.some((seen) => seen.user === CURRENT_USER)) {
     item.seenBy.push({ user: CURRENT_USER, date: dateNow(), time: timeNow() });
@@ -2520,6 +2604,15 @@ function bindGlobal() {
     if (member) { event.stopPropagation(); el.searchResults.hidden = true; openMember(member.dataset.member); return; }
     const view = event.target.closest("[data-open-view]");
     if (view) { event.stopPropagation(); el.searchResults.hidden = true; showView(view.dataset.openView); return; }
+    const smartFilter = event.target.closest("[data-smart-filter]");
+    if (smartFilter) {
+      event.stopPropagation();
+      activeSearchFilter = smartFilter.dataset.smartFilter;
+      el.searchFilters.querySelectorAll("[data-search-filter]").forEach((button) => button.classList.toggle("is-active", button.dataset.searchFilter === activeSearchFilter));
+      showView("accueil");
+      render();
+      return;
+    }
     const searchFilter = event.target.closest("[data-search-filter]");
     if (searchFilter) {
       event.stopPropagation();

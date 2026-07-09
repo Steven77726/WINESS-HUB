@@ -1,4 +1,4 @@
-const CACHE = "winess-hub-v325";
+const CACHE = "winess-hub-v326";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./task-status.js", "./manifest.webmanifest", "./assets/winess-icon.svg"];
 
