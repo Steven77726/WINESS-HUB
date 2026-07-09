@@ -21,7 +21,10 @@ html {
   min-width: 320px;
   min-height: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   background: #06090f;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -29,6 +32,9 @@ body {
   min-width: 320px;
   min-height: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
+  touch-action: pan-y;
   color: #fff;
   background:
     radial-gradient(circle at 24% -12%, rgba(59, 130, 246, 0.18), transparent 30%),
@@ -44,6 +50,7 @@ select,
 textarea {
   font: inherit;
   font-size: 16px;
+  touch-action: manipulation;
 }
 
 button {
@@ -64,6 +71,8 @@ button {
   width: min(100%, 1480px);
   min-height: var(--app-viewport-height);
   margin: 0 auto;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
 }
 
 .sidebar {
@@ -205,6 +214,8 @@ button {
 
 .workspace {
   padding: 28px clamp(18px, 3vw, 42px) max(44px, env(safe-area-inset-bottom));
+  min-width: 0;
+  overflow-x: clip;
 }
 
 .topbar {
@@ -303,6 +314,9 @@ h1 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+  min-width: 0;
+  overflow-x: clip;
+  touch-action: pan-y;
 }
 
 .staff-grid {
@@ -331,17 +345,17 @@ h1 {
   padding: 18px;
   overflow: hidden;
   cursor: pointer;
-  transition: transform 220ms cubic-bezier(.2, .8, .2, 1), border-color 180ms ease, box-shadow 180ms ease;
+  touch-action: pan-y;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease, filter 180ms ease;
 }
 
 .employee-card:hover {
   border-color: rgba(246, 183, 60, 0.28);
-  transform: translateY(-2px);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42), 0 0 34px rgba(246, 183, 60, 0.08);
 }
 
 .employee-card:active {
-  transform: scale(0.985);
+  filter: brightness(1.04);
 }
 
 .employee-card:has(.status-busy-radio:checked) {
@@ -407,11 +421,11 @@ h1 {
   font-size: 17px;
   font-weight: 950;
   z-index: 3;
-  transition: transform 160ms ease, background 160ms ease;
+  transition: background 160ms ease, box-shadow 160ms ease;
 }
 
 .avatar-edit:hover {
-  transform: scale(1.06);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.3), 0 0 22px rgba(246, 183, 60, 0.22);
 }
 
 .presence,
@@ -490,7 +504,7 @@ h1 {
   font-size: 11px;
   font-weight: 850;
   opacity: 0.66;
-  transition: opacity 160ms ease, background 160ms ease, transform 160ms ease;
+  transition: opacity 160ms ease, background 160ms ease, color 160ms ease;
 }
 
 .employee-card:has(.status-available-radio:checked) .available-choice,
@@ -502,7 +516,6 @@ h1 {
 
 .availability-toggle .status-choice:hover {
   opacity: 1;
-  transform: scale(1.04);
 }
 
 .availability-prompt {
@@ -525,7 +538,7 @@ h1 {
 
 .availability-prompt.is-visible {
   display: flex;
-  animation: floatIn 220ms ease both;
+  animation: fadeInStable 180ms ease both;
 }
 
 .availability-prompt div {
@@ -941,15 +954,13 @@ h1 {
   }
 }
 
-@keyframes floatIn {
+@keyframes fadeInStable {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
@@ -1000,9 +1011,9 @@ h1 {
 .global-search input { width: 100%; min-height: 52px; padding: 0 18px; border: 1px solid rgba(255,255,255,.14); border-radius: 18px; color: #fff; background: rgba(17,24,39,.98); box-shadow: inset 0 1px 0 rgba(255,255,255,.06),0 14px 32px rgba(0,0,0,.24); backdrop-filter: blur(22px); outline: none; font-weight: 750; }
 .global-search input::placeholder { color: rgba(209,213,219,.72); }
 .global-search input:focus { border-color: rgba(246,183,60,.62); box-shadow: 0 0 0 3px rgba(246,183,60,.14),0 18px 40px rgba(0,0,0,.28); }
-.search-filters { display: flex; gap: 7px; margin-top: 9px; padding: 1px 1px 3px; overflow-x: auto; scrollbar-width: none; }
+.search-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; padding: 1px 1px 3px; overflow: visible; scrollbar-width: none; touch-action: pan-y; }
 .search-filters::-webkit-scrollbar { display: none; }
-.search-filters button { flex: 0 0 auto; min-height: 30px; padding: 0 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.045); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: .22s ease; }
+.search-filters button { flex: 0 0 auto; min-height: 30px; padding: 0 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.045); font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: color .22s ease, background .22s ease, border-color .22s ease, box-shadow .22s ease; }
 .search-filters button.is-active { color: #111827; border-color: rgba(246,183,60,.42); background: var(--gold); box-shadow: 0 10px 24px rgba(246,183,60,.18); }
 .search-results { position: absolute; inset: calc(100% + 8px) 0 auto; display: grid; gap: 6px; max-height: 55vh; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: rgba(10,15,24,.98); box-shadow: 0 24px 60px rgba(0,0,0,.5); overflow: auto; }
 .search-results[hidden] { display: none; }
@@ -1811,10 +1822,10 @@ h1 {
   color: #fff;
   background: rgba(17,24,39,.78);
   cursor: pointer;
-  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease;
+  transition: border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
 }
 .profile-choice-grid button:last-child { grid-column: 1 / -1; }
-.profile-choice-grid button:hover { transform: translateY(-2px); border-color: rgba(246,183,60,.38); background: rgba(24,34,48,.92); }
+.profile-choice-grid button:hover { border-color: rgba(246,183,60,.38); background: rgba(24,34,48,.92); box-shadow: 0 18px 48px rgba(0,0,0,.28); }
 .profile-choice-grid button span { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 50%; color: #111827; background: #f6b73c; font-size: 20px; font-weight: 950; }
 .profile-choice-grid button strong { font-size: 16px; }
 .profile-choice-grid button small { color: #9ca3af; }

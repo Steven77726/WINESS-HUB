@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "322";
+const APP_VERSION = "323";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
@@ -132,6 +132,7 @@ if (IS_FILE_MODE) {
   handleHash();
   registerServiceWorker();
   bindNativeViewport();
+  bindTouchStability();
   initializeSupabase().finally(initializeIdentity);
   logRuntimeEnvironment();
 }
@@ -172,6 +173,33 @@ function bindNativeViewport() {
   window.visualViewport?.addEventListener("resize", apply);
   window.visualViewport?.addEventListener("scroll", apply);
   window.addEventListener("orientationchange", () => window.setTimeout(apply, 250));
+}
+
+function bindTouchStability() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  document.addEventListener("gesturestart", (event) => event.preventDefault(), { passive: false });
+  document.addEventListener("gesturechange", (event) => event.preventDefault(), { passive: false });
+  document.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1) {
+      event.preventDefault();
+      return;
+    }
+    const deltaX = Math.abs(event.touches[0].clientX - touchStartX);
+    const deltaY = Math.abs(event.touches[0].clientY - touchStartY);
+    if (deltaX > 10 && deltaX > deltaY * 1.2) event.preventDefault();
+  }, { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener("touchend", (event) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 320) event.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
 }
 
 function storageAvailable() {
