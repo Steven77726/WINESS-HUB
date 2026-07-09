@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+  <defs>
+    <radialGradient id="blue" cx="28%" cy="6%" r="55%">
+      <stop offset="0" stop-color="#1d4ed8" stop-opacity=".28"/>
+      <stop offset=".62" stop-color="#1d4ed8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="goldGlow" cx="70%" cy="10%" r="42%">
+      <stop offset="0" stop-color="#f6b73c" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#f6b73c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06090f"/>
+      <stop offset=".52" stop-color="#08111d"/>
+      <stop offset="1" stop-color="#03050a"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="42" stdDeviation="58" flood-color="#000000" flood-opacity=".44"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="42" flood-color="#f6b73c" flood-opacity=".13"/>
+    </filter>
+  </defs>
+  <rect width="2732" height="2732" fill="url(#bg)"/>
+  <rect width="2732" height="2732" fill="url(#blue)"/>
+  <rect width="2732" height="2732" fill="url(#goldGlow)"/>
+  <g filter="url(#softShadow)">
+    <rect x="1044" y="884" width="644" height="644" rx="188" fill="#111827" stroke="#f6b73c" stroke-opacity=".32" stroke-width="7"/>
+    <path d="M1146 1076h134l88 420h-122l-100-420Zm238 0h126l-65 272-65-272Zm238 0h134l-100 420h-122l88-420Z" fill="#f6b73c"/>
+  </g>
+  <text x="1366" y="1694" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, SF Pro Display, Arial, sans-serif" font-size="154" font-weight="800" letter-spacing="12" fill="#ffffff">WINESS HUB</text>
+  <text x="1366" y="1810" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, Arial, sans-serif" font-size="46" font-weight="500" fill="#9ca3af">Coordination terrain</text>
+</svg>

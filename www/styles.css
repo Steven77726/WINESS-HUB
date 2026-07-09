@@ -11,6 +11,7 @@
   --card-radius: 28px;
   --app-viewport-height: 100svh;
   --app-viewport-top: 0px;
+  --keyboard-height: 0px;
 }
 
 * {
@@ -42,6 +43,49 @@ body {
     linear-gradient(150deg, #06090f, #08111d 46%, #03050a);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+.native-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  gap: 22px;
+  place-content: center;
+  color: #fff;
+  background:
+    radial-gradient(circle at 28% 4%, rgba(59, 130, 246, 0.2), transparent 34%),
+    radial-gradient(circle at 76% 6%, rgba(246, 183, 60, 0.13), transparent 30%),
+    linear-gradient(150deg, #06090f, #08111d 50%, #03050a);
+  opacity: 1;
+  transition: opacity 260ms ease, visibility 260ms ease;
+}
+
+.native-splash.is-hidden {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.native-splash-mark {
+  display: grid;
+  width: 92px;
+  height: 92px;
+  margin: 0 auto;
+  place-items: center;
+  border: 1px solid rgba(246, 183, 60, .3);
+  border-radius: 30px;
+  color: #f6b73c;
+  background: #111827;
+  box-shadow: 0 28px 84px rgba(0, 0, 0, .46), 0 0 38px rgba(246, 183, 60, .12);
+  font-size: 44px;
+  font-weight: 950;
+}
+
+.native-splash strong {
+  letter-spacing: .22em;
+  font-size: 14px;
+  font-weight: 900;
 }
 
 button,
@@ -298,6 +342,12 @@ h1 {
 
 .view.is-active {
   display: grid;
+  animation: viewFade 180ms ease both;
+}
+
+@keyframes viewFade {
+  from { opacity: .72; }
+  to { opacity: 1; }
 }
 
 .team-section {
@@ -720,11 +770,20 @@ h1 {
   backdrop-filter: blur(18px);
 }
 
+.member-dialog[open] .member-sheet {
+  animation: sheetFade 180ms ease both;
+}
+
+@keyframes sheetFade {
+  from { opacity: .8; }
+  to { opacity: 1; }
+}
+
 .member-sheet {
   position: relative;
   display: grid;
   gap: 16px;
-  padding: 18px;
+  padding: 18px 18px calc(18px + var(--keyboard-height));
   max-height: calc(var(--app-viewport-height) - max(24px, env(safe-area-inset-top)) - max(18px, env(safe-area-inset-bottom)));
   overflow: auto;
   overscroll-behavior: contain;
@@ -950,7 +1009,7 @@ h1 {
     max-height: calc(var(--app-viewport-height) - env(safe-area-inset-top));
     overflow: auto;
     border-radius: 30px 30px 0 0;
-    padding-bottom: max(22px, env(safe-area-inset-bottom));
+    padding-bottom: max(calc(22px + var(--keyboard-height)), env(safe-area-inset-bottom));
   }
 }
 

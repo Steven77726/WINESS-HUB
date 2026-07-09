@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "323";
+const APP_VERSION = "324";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
@@ -133,6 +133,7 @@ if (IS_FILE_MODE) {
   registerServiceWorker();
   bindNativeViewport();
   bindTouchStability();
+  initializeNativeShell();
   initializeSupabase().finally(initializeIdentity);
   logRuntimeEnvironment();
 }
@@ -173,6 +174,52 @@ function bindNativeViewport() {
   window.visualViewport?.addEventListener("resize", apply);
   window.visualViewport?.addEventListener("scroll", apply);
   window.addEventListener("orientationchange", () => window.setTimeout(apply, 250));
+}
+
+function initializeNativeShell() {
+  document.body.classList.toggle("is-capacitor", IS_CAPACITOR);
+  configureNativeKeyboard();
+  window.setTimeout(hideNativeSplash, IS_CAPACITOR ? 1250 : 900);
+}
+
+function nativePlugin(name) {
+  return window.Capacitor?.Plugins?.[name] || null;
+}
+
+async function hideNativeSplash() {
+  document.querySelector("#nativeSplash")?.classList.add("is-hidden");
+  if (!IS_CAPACITOR) return;
+  try {
+    await nativePlugin("SplashScreen")?.hide?.({ fadeOutDuration: 260 });
+  } catch (error) {
+    console.warn("SplashScreen hide ignoré", error);
+  }
+}
+
+function configureNativeKeyboard() {
+  if (!IS_CAPACITOR) return;
+  const keyboard = nativePlugin("Keyboard");
+  if (!keyboard) return;
+  keyboard.setAccessoryBarVisible?.({ isVisible: false }).catch?.(() => {});
+  keyboard.setResizeMode?.({ mode: "native" }).catch?.(() => {});
+  keyboard.addListener?.("keyboardWillShow", (info = {}) => {
+    document.documentElement.style.setProperty("--keyboard-height", `${Math.round(info.keyboardHeight || 0)}px`);
+    document.body.classList.add("keyboard-open");
+  });
+  keyboard.addListener?.("keyboardWillHide", () => {
+    document.documentElement.style.setProperty("--keyboard-height", "0px");
+    document.body.classList.remove("keyboard-open");
+  });
+}
+
+function hapticImpact(style = "LIGHT") {
+  if (!IS_CAPACITOR) return;
+  nativePlugin("Haptics")?.impact?.({ style }).catch?.(() => {});
+}
+
+function hapticNotify(type = "SUCCESS") {
+  if (!IS_CAPACITOR) return;
+  nativePlugin("Haptics")?.notification?.({ type }).catch?.(() => {});
 }
 
 function bindTouchStability() {
@@ -302,6 +349,7 @@ async function showPinStep(memberId) {
     renderPinForm(member, result.has_pin ? "verify" : "register");
   } catch (error) {
     console.error("Winess Hub connexion impossible", connectionDiagnostics("profile-pin:status", error));
+    hapticNotify("ERROR");
     el.profileGateContent.innerHTML = `<header><h1>Connexion impossible</h1><p>${escapeHtml(error.message)}</p></header><button class="gate-secondary" id="retryProfiles" type="button">Réessayer</button>`;
     document.querySelector("#retryProfiles").addEventListener("click", showProfileChooser);
   }
@@ -344,6 +392,7 @@ async function submitPin(event, member, mode) {
     activateProfile(member);
   } catch (error) {
     console.error("Winess Hub PIN refusé", connectionDiagnostics(`profile-pin:${mode}`, error));
+    hapticNotify("ERROR");
     errorNode.textContent = error.message;
     submit.disabled = false;
     submit.textContent = mode === "register" ? "Créer mon PIN" : "Continuer";
@@ -1248,6 +1297,7 @@ function createDeliveryTask(event) {
   const form = new FormData(event.currentTarget);
   const order = state.tasks.find((task) => task.id === form.get("orderId"));
   if (!order) {
+    hapticNotify("ERROR");
     showToast("Choisissez une commande à livrer");
     return;
   }
@@ -1317,6 +1367,7 @@ function createDeliveryTask(event) {
   render();
   openTask(item.id);
   sendPush(assignee, "Nouvelle livraison", `${CURRENT_USER} vous a assigné : ${item.title}`, taskDeepLink(item.id), `task:${item.id}:delivery-created`);
+  hapticNotify("SUCCESS");
   showToast("Livraison créée");
 }
 
@@ -1362,6 +1413,7 @@ function createTask(event, assignee) {
   if (missingQuantity(item)) addActivity(`⚠️ ${item.title} : manquant ${missingQuantity(item)}`);
   save(item); render();
   openTask(item.id);
+  hapticNotify("SUCCESS");
   const pushTitle = item.missionType === "livraison" ? "Nouvelle livraison" : item.priority.includes("Urgente") ? "🔥 Nouvelle tâche urgente" : "Nouvelle tâche Winess Hub";
   const pushBody = item.missionType === "preparation" ? `${CURRENT_USER} vous a assigné une préparation de commande : ${item.title}` : `${CURRENT_USER} vous a assigné une nouvelle tâche : ${item.title}`;
   sendPush(assignedTo, pushTitle, pushBody, taskDeepLink(item.id), `task:${item.id}:assigned`);
@@ -1564,6 +1616,7 @@ async function createStuartDelivery(item, testMode = false) {
   if (isCompleted(item)) {
     recordLockedStatusAttempt(item, "create-stuart", item.status, "Course demandée");
     save(item);
+    hapticNotify("ERROR");
     showToast("Tâche terminée : création Stuart refusée");
     return;
   }
@@ -1605,12 +1658,14 @@ async function createStuartDelivery(item, testMode = false) {
     save(item);
     render();
     openTask(item.id, pendingMessageId, { updateRoute: false });
+    hapticNotify("SUCCESS");
     showToast(testMode ? "Livraison test créée" : "Livraison Stuart demandée");
   } catch (error) {
     console.warn("Stuart indisponible", error);
     item.stuartError = error.message || "création refusée";
     item.history.push(`Erreur Stuart : ${item.stuartError} — ${dateTimeNow()}`);
     save(item);
+    hapticNotify("ERROR");
     showToast(`Erreur Stuart : ${item.stuartError}`);
     openTask(item.id);
   }
@@ -1858,6 +1913,7 @@ function finishPreparation(item) {
   save(item);
   render();
   openTask(item.id, pendingMessageId, { updateRoute: false });
+  hapticNotify("SUCCESS");
   showToast(everythingAvailable ? "Préparation prête" : "Préparation prête avec manquants");
 }
 
@@ -1898,6 +1954,8 @@ function saveTaskDetails(item) {
     addActivity(`${CURRENT_USER} a signalé un manquant de ${missingQuantity(item)} sur ${item.title}`);
   }
   save(item); render(); openTask(item.id, pendingMessageId, { updateRoute: false });
+  if (isCompleted(item)) hapticNotify("SUCCESS");
+  else hapticImpact("LIGHT");
   showToast(isCompleted(item) ? "Tâche déplacée dans les archives" : "Modifications enregistrées");
 }
 
@@ -2847,15 +2905,18 @@ function applyRemoteTask(payload) {
     return;
   }
   const index = state.tasks.findIndex((item) => item.id === id);
+  let incomingTask = null;
   if (payload.eventType === "DELETE") {
     if (index >= 0) state.tasks.splice(index, 1);
   } else {
     const item = migrateTask({ ...payload.new.data, id }, payload.new.updated_at);
+    incomingTask = item;
     if (index >= 0) state.tasks[index] = item;
     else state.tasks.unshift(item);
   }
   storageSet(STORAGE_KEY, JSON.stringify(state));
   render();
+  if (index < 0 && incomingTask?.assignee === CURRENT_USER && incomingTask.createdBy !== CURRENT_USER) hapticNotify("WARNING");
   if (el.taskDialog.open && openedTaskId === id) {
     openTask(id, pendingMessageId, { updateRoute: false });
     showToast("Fiche mise à jour en temps réel");
