@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "321";
+const APP_VERSION = "322";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
@@ -131,6 +131,7 @@ if (IS_FILE_MODE) {
   bindGlobal();
   handleHash();
   registerServiceWorker();
+  bindNativeViewport();
   initializeSupabase().finally(initializeIdentity);
   logRuntimeEnvironment();
 }
@@ -158,6 +159,19 @@ function logRuntimeEnvironment() {
     localStorage: storageAvailable(),
     serviceWorker: "serviceWorker" in navigator
   });
+}
+
+function bindNativeViewport() {
+  const apply = () => {
+    const viewport = window.visualViewport;
+    const height = viewport?.height || window.innerHeight;
+    document.documentElement.style.setProperty("--app-viewport-height", `${Math.round(height)}px`);
+    document.documentElement.style.setProperty("--app-viewport-top", `${Math.round(viewport?.offsetTop || 0)}px`);
+  };
+  apply();
+  window.visualViewport?.addEventListener("resize", apply);
+  window.visualViewport?.addEventListener("scroll", apply);
+  window.addEventListener("orientationchange", () => window.setTimeout(apply, 250));
 }
 
 function storageAvailable() {
@@ -2469,6 +2483,12 @@ function compressAvatar(file) {
 
 async function enablePush() {
   if (!requireIdentity()) return;
+  if (IS_CAPACITOR) {
+    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Dans l’app iPhone native, les notifications passeront par le module natif Capacitor Push. La connexion et la synchronisation restent actives.</span>`;
+    el.iphoneHelp.classList.add("is-visible");
+    el.pushState.textContent = "Notifications natives à activer dans une prochaine étape";
+    return;
+  }
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications, ajoute Winess Hub à l’écran d’accueil puis ouvre l’app depuis l’icône.</span>`;
   el.iphoneHelp.classList.add("is-visible");
   if (!matchMedia("(display-mode: standalone)").matches && navigator.standalone !== true) {
@@ -2527,13 +2547,18 @@ function taskDeepLink(taskId, messageId = "") {
 
 function callEdgeFunction(functionName, body) {
   const url = `${EDGE_FUNCTION_BASE}/${functionName}`;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 18000);
   return fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`, "x-client-info": `winess-hub-${CLIENT_ENV}` },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: controller.signal
+  }).finally(() => {
+    window.clearTimeout(timeout);
   }).catch((error) => {
     console.error("Winess Hub Edge Function inaccessible", connectionDiagnostics(functionName, error));
-    throw new Error("Supabase inaccessible depuis cette app. Vérifiez la connexion Internet et les origines Capacitor.");
+    throw new Error(error?.name === "AbortError" ? "Connexion trop lente. Réessayez dans quelques secondes." : "Supabase inaccessible depuis cette app. Vérifiez la connexion Internet et les origines Capacitor.");
   });
 }
 
@@ -2640,7 +2665,7 @@ async function initializeSupabase() {
   try {
     const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
     supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false }
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
 
     const [{ data: remoteTasks, error: taskError }, { data: remoteActivity, error: activityError }, { data: remoteProfiles, error: profileError }, { data: remoteContacts, error: contactError }] = await Promise.all([

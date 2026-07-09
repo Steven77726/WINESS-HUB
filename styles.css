@@ -9,15 +9,26 @@
   --red: #ef4444;
   --button-radius: 18px;
   --card-radius: 28px;
+  --app-viewport-height: 100svh;
+  --app-viewport-top: 0px;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  min-width: 320px;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: #06090f;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100%;
+  overflow-x: hidden;
   color: #fff;
   background:
     radial-gradient(circle at 24% -12%, rgba(59, 130, 246, 0.18), transparent 30%),
@@ -28,8 +39,11 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+  font-size: 16px;
 }
 
 button {
@@ -48,7 +62,7 @@ button {
   display: grid;
   grid-template-columns: 238px minmax(0, 1fr);
   width: min(100%, 1480px);
-  min-height: 100svh;
+  min-height: var(--app-viewport-height);
   margin: 0 auto;
 }
 
@@ -56,7 +70,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 50;
-  height: 100svh;
+  height: var(--app-viewport-height);
   padding: 24px 18px;
   border-right: 1px solid var(--line);
   background: rgba(6, 9, 15, 0.72);
@@ -680,10 +694,12 @@ h1 {
 
 .member-dialog {
   width: min(100% - 24px, 760px);
+  max-height: calc(var(--app-viewport-height) - max(24px, env(safe-area-inset-top)) - max(18px, env(safe-area-inset-bottom)));
   padding: 0;
   border: 0;
   color: #fff;
   background: transparent;
+  overflow: visible;
 }
 
 .member-dialog::backdrop {
@@ -696,6 +712,10 @@ h1 {
   display: grid;
   gap: 16px;
   padding: 18px;
+  max-height: calc(var(--app-viewport-height) - max(24px, env(safe-area-inset-top)) - max(18px, env(safe-area-inset-bottom)));
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .icon-close {
@@ -910,12 +930,14 @@ h1 {
     width: 100%;
     max-width: none;
     margin: auto 0 0;
+    max-height: calc(var(--app-viewport-height) - env(safe-area-inset-top));
   }
 
   .member-sheet {
-    max-height: 92svh;
+    max-height: calc(var(--app-viewport-height) - env(safe-area-inset-top));
     overflow: auto;
     border-radius: 30px 30px 0 0;
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
   }
 }
 
@@ -1740,7 +1762,7 @@ h1 {
 .profile-gate {
   width: 100%;
   max-width: none;
-  height: 100%;
+  height: var(--app-viewport-height);
   max-height: none;
   margin: 0;
   padding: 0;
@@ -1754,7 +1776,7 @@ h1 {
   display: grid;
   gap: 28px;
   width: min(560px, calc(100% - 32px));
-  min-height: 100%;
+  min-height: var(--app-viewport-height);
   margin: 0 auto;
   padding: max(42px, env(safe-area-inset-top)) 0 max(30px, env(safe-area-inset-bottom));
   align-content: center;
