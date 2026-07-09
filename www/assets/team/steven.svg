@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Steven">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#263244"/>
+      <stop offset="100%" stop-color="#06090f"/>
+    </radialGradient>
+    <linearGradient id="skin" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f2b184"/>
+      <stop offset="100%" stop-color="#b96542"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="0" x2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#253247"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="128" fill="url(#bg)"/>
+  <path d="M58 224c9-43 39-66 70-66s61 23 70 66" fill="url(#shirt)"/>
+  <circle cx="128" cy="112" r="61" fill="url(#skin)"/>
+  <path d="M70 100c2-42 27-68 61-68 38 0 62 26 59 70-15-23-38-33-68-33-25 0-42 9-52 31Z" fill="#18120f"/>
+  <path d="M77 102c15-10 30-15 48-15 25 0 45 7 59 19-2-35-23-56-56-56-31 0-51 19-51 52Z" fill="#2a1b14"/>
+  <circle cx="104" cy="116" r="6" fill="#101010"/>
+  <circle cx="151" cy="116" r="6" fill="#101010"/>
+  <path d="M114 145c10 8 24 8 34 0" fill="none" stroke="#6b2d24" stroke-width="6" stroke-linecap="round"/>
+  <path d="M95 95c10-5 22-5 31 0M139 95c10-5 22-5 31 0" fill="none" stroke="#1d1512" stroke-width="7" stroke-linecap="round"/>
+  <path d="M92 134c11 9 21 13 36 13s28-4 38-13c-4 24-19 39-38 39s-33-15-36-39Z" fill="#3b1f1a" opacity=".82"/>
+  <path d="M103 139c7 10 15 15 25 15s19-5 26-15" fill="none" stroke="#16100e" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="86" cy="125" r="8" fill="#e59169" opacity=".55"/>
+  <circle cx="170" cy="125" r="8" fill="#e59169" opacity=".55"/>
+  <path d="M88 76c13-26 40-38 72-28 19 6 31 22 34 47-18-21-43-31-74-27-11 1-21 4-32 8Z" fill="#130e0c"/>
+</svg>

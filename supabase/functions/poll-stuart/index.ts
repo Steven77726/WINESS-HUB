@@ -56,6 +56,11 @@ Deno.serve(async (request) => {
       const nextTask = {
         ...task,
         status: nextStatus,
+        statusChangedAt: now,
+        statusChangedBy: "Stuart",
+        statusChangeSource: "poll-stuart",
+        statusChangedDevice: "supabase-edge",
+        statusAudit: appendStatusAudit(task.statusAudit, previousStatus, nextStatus, now),
         stuartStatus: course.status || task.stuartStatus || nextStatus,
         stuartTrackingUrl: course.trackingUrl || task.stuartTrackingUrl || "",
         stuartEta: course.eta || task.stuartEta || "",
@@ -80,7 +85,7 @@ Deno.serve(async (request) => {
         status: nextStatus,
         completed_at: closedByStuart ? now : task.completedAt || null,
         delivered_at: closedByStuart ? now : task.deliveredAt || null,
-        updated_by: "system",
+        updated_by: "poll-stuart",
       }).eq("id", row.id);
       if (updateError) throw updateError;
       updated += 1;
@@ -109,7 +114,8 @@ function isTrackable(task: Record<string, unknown>) {
   const jobId = String(task.stuartJobId || "").trim();
   if (!jobId || task.stuartTestMode === true) return false;
   if (task.deletedAt || task.archivedAt) return false;
-  return !["Livrée", "Terminée", "Terminé", "Annulée", "Incident", "Erreur"].includes(String(task.status || ""));
+  if (task.completedAt || isFinalStatus(task.status)) return false;
+  return !["annulee", "incident", "erreur"].includes(normalizedStatusKey(task.status));
 }
 
 async function getStuartCourse(taskId: string, task: Record<string, unknown>): Promise<StuartCourse> {
@@ -152,7 +158,7 @@ function mapStuartStatus(status = "") {
   const value = normalizedStatusKey(status);
   if (value.includes("incident") || value.includes("failed") || value.includes("problem")) return "Incident";
   if (value.includes("cancel")) return "Annulée";
-  if (value.includes("delivered") || value.includes("completed") || value.includes("livree") || value.includes("terminee")) return "Terminée";
+  if (value.includes("delivered") || value.includes("completed") || value.includes("finished") || value.includes("livree") || value.includes("terminee")) return "Terminée";
   if (value.includes("at dropoff") || value.includes("arrived at dropoff") || value.includes("client")) return "Arrivé client";
   if (value.includes("delivering") || value.includes("dropoff") || value.includes("en livraison")) return "En livraison";
   if (value.includes("picked") || value.includes("pickup complete") || value.includes("recup")) return "Commande récupérée";
@@ -210,6 +216,19 @@ function appendTimeline(value: unknown, status: string, at: string) {
   return [...timeline, { key, status, at }];
 }
 
+function appendStatusAudit(value: unknown, previousStatus: string, nextStatus: string, at: string) {
+  const entries = arrayValue(value);
+  return [...entries, {
+    at,
+    source: "poll-stuart",
+    deviceId: "supabase-edge",
+    user: "Stuart",
+    previousStatus,
+    nextStatus,
+    outcome: "acceptée",
+  }].slice(-100);
+}
+
 function displayStatus(status: string) {
   const icons: Record<string, string> = {
     "Course demandée": "🟡 Recherche d'un coursier",
@@ -236,6 +255,14 @@ function memberId(value: unknown) {
 
 function normalizedStatusKey(value: unknown) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isFinalStatus(value: unknown) {
+  return [
+    "valide", "validee", "validated", "prete", "prete avec manquants", "facture",
+    "recupere", "recuperee", "recovered", "livre", "livree", "delivered",
+    "termine", "terminee", "completed", "finished", "annule", "annulee", "cancelled", "canceled",
+  ].includes(normalizedStatusKey(value));
 }
 
 function objectValue(value: unknown): Record<string, unknown> {

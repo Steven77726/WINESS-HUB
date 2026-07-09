@@ -1,0 +1,14 @@
+{
+  "name": "Winess Hub",
+  "short_name": "Winess Hub",
+  "description": "Coordination terrain Winess",
+  "start_url": "./index.html#accueil",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06090f",
+  "theme_color": "#06090f",
+  "icons": [
+    { "src": "assets/winess-icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -2,6 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = new Set([
   "https://steven77726.github.io",
+  "capacitor://localhost",
+  "ionic://localhost",
   "http://127.0.0.1:4177",
   "http://localhost:4177",
 ]);
