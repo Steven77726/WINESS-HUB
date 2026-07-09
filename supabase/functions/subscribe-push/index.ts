@@ -7,19 +7,22 @@ Deno.serve(async (request) => {
 
   try {
     const { user_id: userId, subscription } = await request.json();
+    const nativeToken = typeof subscription?.token === "string" ? subscription.token.trim() : "";
+    const isNativeIos = subscription?.type === "apns" && /^[a-f0-9]{32,256}$/i.test(nativeToken);
     const validSubscription = subscription
       && typeof subscription.endpoint === "string"
       && subscription.endpoint.startsWith("https://")
       && subscription.keys?.p256dh
       && subscription.keys?.auth;
-    if (!validUserId(userId) || !validSubscription) return json(request, { error: "Abonnement invalide" }, 400);
+    if (!validUserId(userId) || (!validSubscription && !isNativeIos)) return json(request, { error: "Abonnement invalide" }, 400);
 
     const supabase = adminClient();
+    const endpoint = isNativeIos ? `apns:${nativeToken}` : subscription.endpoint;
     const { error } = await supabase.from("push_subscriptions").upsert({
       user_id: userId,
-      endpoint: subscription.endpoint,
-      keys: subscription.keys,
-      subscription,
+      endpoint,
+      keys: isNativeIos ? { platform: "ios", device_id: subscription.deviceId || "" } : subscription.keys,
+      subscription: isNativeIos ? { ...subscription, endpoint, token: nativeToken } : subscription,
       updated_at: new Date().toISOString(),
     }, { onConflict: "endpoint" });
     if (error) throw error;

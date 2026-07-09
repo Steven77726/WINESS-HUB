@@ -11,7 +11,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "324";
+const APP_VERSION = "325";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
@@ -89,6 +89,7 @@ let activeSearchFilter = "all";
 let searchInputTimer = 0;
 let pendingMessageId = "";
 let lastViewHash = location.hash.startsWith("#view-") ? location.hash : "#view-accueil";
+let nativePushBound = false;
 
 const el = {
   direction: document.querySelector("#directionGrid"),
@@ -134,6 +135,7 @@ if (IS_FILE_MODE) {
   bindNativeViewport();
   bindTouchStability();
   initializeNativeShell();
+  bindNativePushListeners();
   initializeSupabase().finally(initializeIdentity);
   logRuntimeEnvironment();
 }
@@ -210,6 +212,100 @@ function configureNativeKeyboard() {
     document.documentElement.style.setProperty("--keyboard-height", "0px");
     document.body.classList.remove("keyboard-open");
   });
+}
+
+function bindNativePushListeners() {
+  if (!IS_CAPACITOR || nativePushBound) return;
+  const push = nativePlugin("PushNotifications");
+  if (!push) return;
+  nativePushBound = true;
+  push.addListener?.("registration", async (token) => {
+    try {
+      if (!CURRENT_USER) {
+        el.pushState.textContent = "Choisissez un profil avant d’activer les notifications";
+        return;
+      }
+      await registerNativePushToken(token.value);
+      hapticNotify("SUCCESS");
+    } catch (error) {
+      console.error("Token push natif non enregistré", connectionDiagnostics("native-push-registration", error));
+      hapticNotify("ERROR");
+      el.pushState.textContent = "Token iPhone non enregistré";
+    }
+  });
+  push.addListener?.("registrationError", (error) => {
+    console.error("Erreur registration push iOS", error);
+    hapticNotify("ERROR");
+    el.pushState.textContent = "Erreur activation notifications iPhone";
+  });
+  push.addListener?.("pushNotificationReceived", (notification) => {
+    hapticNotify("WARNING");
+    showToast(notification?.title || "Nouvelle notification Winess Hub");
+  });
+  push.addListener?.("pushNotificationActionPerformed", (action) => {
+    openNotificationTarget(action?.notification?.data || {});
+  });
+}
+
+function openNotificationTarget(data = {}) {
+  const url = data.url || data.deepLink || data.link || "";
+  const taskId = data.taskId || data.task_id || parseTaskIdFromUrl(url);
+  const messageId = data.messageId || data.message_id || parseMessageIdFromUrl(url);
+  if (taskId) {
+    openTask(String(taskId), messageId ? String(messageId) : "");
+    return;
+  }
+  if (url) {
+    const parsed = hashFromUrl(url);
+    if (parsed) {
+      location.hash = parsed.slice(1);
+      handleHash();
+      return;
+    }
+  }
+  showView("accueil");
+}
+
+function parseTaskIdFromUrl(value = "") {
+  const hash = hashFromUrl(value);
+  const match = hash?.match(/^#task-([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function parseMessageIdFromUrl(value = "") {
+  const hash = hashFromUrl(value);
+  const match = hash?.match(/[?&]message=([^&]+)/) || hash?.match(/&message=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function hashFromUrl(value = "") {
+  if (!value) return "";
+  if (String(value).startsWith("#")) return String(value);
+  try {
+    return new URL(String(value), APP_BASE_URL).hash || "";
+  } catch {
+    return "";
+  }
+}
+
+async function registerNativePushToken(token) {
+  if (!token) throw new Error("Token APNs absent");
+  const response = await callEdgeFunction("subscribe-push", {
+    user_id: memberIdForName(CURRENT_USER),
+    subscription: {
+      type: "apns",
+      token,
+      platform: "ios",
+      appId: "fr.winesshub.app",
+      deviceId: DEVICE_ID,
+      env: CLIENT_ENV
+    }
+  });
+  const result = await safeJson(response);
+  if (!response.ok || !result.ok) throw new Error(result.error || "Abonnement iPhone refusé");
+  el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Notifications natives activées pour ${CURRENT_USER}.</span>`;
+  el.iphoneHelp.classList.add("is-visible");
+  el.pushState.textContent = `Notifications iPhone actives pour ${CURRENT_USER}`;
 }
 
 function hapticImpact(style = "LIGHT") {
@@ -2570,9 +2666,26 @@ function compressAvatar(file) {
 async function enablePush() {
   if (!requireIdentity()) return;
   if (IS_CAPACITOR) {
-    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Dans l’app iPhone native, les notifications passeront par le module natif Capacitor Push. La connexion et la synchronisation restent actives.</span>`;
+    const push = nativePlugin("PushNotifications");
+    if (!push) {
+      el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Le plugin natif Push Notifications n’est pas disponible dans ce build iOS.</span>`;
+      el.iphoneHelp.classList.add("is-visible");
+      el.pushState.textContent = "Plugin Push absent";
+      hapticNotify("ERROR");
+      return;
+    }
+    bindNativePushListeners();
+    el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Autorisez les notifications pour recevoir les tâches, mentions, messages, rappels et livraisons Stuart.</span>`;
     el.iphoneHelp.classList.add("is-visible");
-    el.pushState.textContent = "Notifications natives à activer dans une prochaine étape";
+    el.pushState.textContent = "Demande d’autorisation iPhone...";
+    const permission = await push.requestPermissions();
+    if (permission.receive !== "granted") {
+      el.pushState.textContent = "Notifications iPhone refusées";
+      hapticNotify("ERROR");
+      return;
+    }
+    el.pushState.textContent = "Enregistrement iPhone...";
+    await push.register();
     return;
   }
   el.iphoneHelp.innerHTML = `<strong>Notifications iPhone</strong><span>Pour recevoir les notifications, ajoute Winess Hub à l’écran d’accueil puis ouvre l’app depuis l’icône.</span>`;

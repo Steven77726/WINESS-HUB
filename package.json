@@ -19,11 +19,13 @@
   },
   "homepage": "https://github.com/Steven77726/WINESS-HUB#readme",
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.4.1",
     "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/push-notifications": "^8.1.1",
     "@capacitor/splash-screen": "^8.0.1"
   }
 }
