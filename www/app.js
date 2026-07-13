@@ -12,7 +12,7 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://xzcshuoelidzdlihnwme.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KI7h19VdLtB2YfXBsN4bAw_9KQMxNBs";
 const APP_BASE_URL = "https://steven77726.github.io/WINESS-HUB/";
-const APP_VERSION = "327";
+const APP_VERSION = "328";
 const IS_FILE_MODE = location.protocol === "file:";
 const IS_CAPACITOR = ["capacitor:", "ionic:"].includes(location.protocol) || Boolean(window.Capacitor?.isNativePlatform?.());
 const CLIENT_ENV = IS_CAPACITOR ? "capacitor-ios" : IS_FILE_MODE ? "file" : "web";
