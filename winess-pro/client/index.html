@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#183f32">
-<title>WINESS PRO — Espace professionnel</title>
+<title>WINESS PRO — Espace professionnel</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon.svg">
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f4f6f3;color:#203b30;font-family:system-ui,-apple-system,Arial,sans-serif}
 .shell{max-width:860px;margin:0 auto;padding:22px 16px 90px}
@@ -70,19 +70,19 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 <div class="reviewactions"><button class="outline" id="review-back">Modifier mon panier</button><button id="review-send">Confirmer et envoyer ma commande</button></div></div>
 </div>
 </section>
-<section id="messages" class="card hide"><h3>Mes notifications</h3><div id="messages-list"></div></section><section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
+<section id="messages" class="card hide"><h3>Mes notifications</h3><div class="banner" style="margin:12px 0"><strong>Notifications iPhone</strong><p id="push-help" style="font-size:13px;margin:7px 0">Pour recevoir une alerte même lorsque Winess PRO est fermé, ajoutez l'application à l'écran d'accueil de votre iPhone, puis autorisez les notifications.</p><button id="push-enable" class="outline tiny" disabled>Vérification des notifications…</button></div><div id="messages-list"></div></section><section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
 </div>
 <div id="notice" role="status" aria-live="polite"></div><div id="popup" class="popwrap hide"><div class="pop"><h2 id="popup-title"></h2><p id="popup-body"></p><button id="popup-view">Voir ma commande</button> <button class="outline" id="popup-close">Fermer</button></div></div>
 </div>
 <script>
 const API='https://azjiryszenzwkwnnnsar.supabase.co/functions/v1/winess-client-access';
-const slug=new URLSearchParams(location.search).get('c')||'';
+const slug=new URLSearchParams(location.search).get('c')||'';if(!slug){const last=localStorage.getItem('winesspro_last_slug');if(last&&/^[a-z0-9-]{2,50}$/.test(last))location.replace('./?c='+encodeURIComponent(last))}
 const key='winesspro_session_'+slug;
 const $=id=>document.getElementById(id);
 const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
-let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
+let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;let pushConfig=null;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
 async function call(action,more={}){
  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
  let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
@@ -155,7 +155,7 @@ async function refreshClientStock(){
   if(reviewing)renderReview();else render();renderNew();
  }catch(e){console.warn('Stock actualisation:',e.message)}
 }
-async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();renderNew();if(wantNew){tab('new');renderNew()}notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();}
+async function load(){const d=await call('catalogue');catalog=d.products;localStorage.setItem('winesspro_last_slug',slug); $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();renderNew();if(wantNew){tab('new');renderNew()}notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();await updatePushConfig();}
 function openPopup(title,body,orderId=null){$('popup-view').textContent='Voir ma commande';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
 $('popup-close').onclick=()=>$('popup').classList.add('hide');
 $('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};
@@ -176,6 +176,46 @@ function messageDetails(m){
  }
  return m.body;
 }
+async function updatePushConfig(){
+ const b=$('push-enable');
+ try{
+  const d=await call('push_config');pushConfig=d;
+  if(!d.configured){
+   b.textContent='Notifications iPhone : activation serveur en attente';b.disabled=true;
+   $('push-help').textContent='Les alertes dans votre espace sont actives. Les notifications sur l’écran verrouillé nécessitent encore la configuration des clés Web Push de Winess.';
+   return
+  }
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){
+   b.textContent='Notifications non disponibles sur ce navigateur';b.disabled=true;
+   $('push-help').textContent='Sur iPhone : ouvrez ce lien dans Safari, choisissez Partager → Sur l’écran d’accueil, puis ouvrez l’application depuis son icône.';
+   return
+  }
+  const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  const old=await reg.pushManager.getSubscription();
+  b.textContent=old?'Notifications activées sur cet appareil':'Activer les notifications sur cet appareil';b.disabled=!!old;
+  $('push-help').textContent='Sur iPhone, installez Winess PRO sur l’écran d’accueil avant de cliquer. Vous recevrez les nouveautés sélectionnées pour votre établissement même si l’application est fermée.';
+ }catch(e){b.textContent='Activer les notifications';b.disabled=true;$('push-help').textContent='Configuration des notifications indisponible : '+e.message}
+}
+function decodeVapid(key){
+ const encoded=key.replace(/-/g,'+').replace(/_/g,'/');
+ const padded=encoded+'='.repeat((4-encoded.length%4)%4);
+ return Uint8Array.from(atob(padded),c=>c.charCodeAt(0));
+}
+$('push-enable').onclick=async()=>{
+ const button=$('push-enable');
+ if(!pushConfig?.public_key)return notice('Notifications push non configurées.',true);
+ // iOS requires requestPermission to be invoked directly from a click gesture.
+ const permissionPromise=Notification.requestPermission();
+ button.disabled=true;
+ try{
+  const permission=await permissionPromise;
+  if(permission!=='granted')throw Error('Autorisation refusée. Vous pouvez la réactiver dans les réglages de l’iPhone.');
+  const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeVapid(pushConfig.public_key)});
+  await call('push_subscribe',{subscription:sub.toJSON()});
+  button.textContent='Notifications activées sur cet appareil';notice('Les notifications Winess PRO sont activées sur cet appareil.');
+ }catch(e){button.disabled=false;notice('Activation impossible : '+e.message,true)}
+};
 async function getMessages(){
  try{const d=await call('messages');const previous=new Set(messages.map(m=>m.id));messages=d.messages||[];
  $('unread-count').textContent=messages.filter(m=>!m.read_at).length||'';
