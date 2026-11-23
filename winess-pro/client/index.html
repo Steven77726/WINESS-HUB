@@ -129,7 +129,7 @@ function renderOrders(){
  return '<div class="history" data-order-container="'+safe(o.id)+'"><div class="row"><b>Commande #'+safe(o.order_number)+'</b><span class="pill">'+safe(o.status==='review'?'À vérifier':o.status==='received'?'Reçue':o.status==='confirmed'?'Confirmée':o.status)+'</span></div><small>'+new Date(o.created_at).toLocaleDateString('fr-FR')+' · Traitement prévu '+safe(o.processing_date)+'</small>'+
  (o.order_items||[]).map(i=>'<div class="historyline"><div>'+safe(i.product_name)+'<br><small>Demandé : '+safe(i.quantity)+' × '+euros(i.unit_price_ht)+' HT'+(i.confirmed_quantity!==null?' · Confirmé : '+safe(i.confirmed_quantity):'')+'</small></div><b>'+euros((i.confirmed_quantity??i.quantity)*i.unit_price_ht)+'</b></div>').join('')+
  (o.status==='confirmed'?'<p><b>Commande confirmée : '+(o.order_items||[]).reduce((n,i)=>n+(i.confirmed_quantity??0),0)+'/'+(o.order_items||[]).reduce((n,i)=>n+i.quantity,0)+' bouteilles</b></p>':'')+
- '<div class="row"><b>Total HT</b><b>'+euros(o.total_ht)+'</b></div>'+
+ '<div class="row"><b>'+(o.status==='confirmed'?'Total confirmé HT':'Total demandé HT')+'</b><b>'+euros(o.status==='confirmed'?(o.order_items||[]).reduce((n,i)=>n+(i.confirmed_quantity??0)*Number(i.unit_price_ht),0):o.total_ht)+'</b></div>'+(o.status==='confirmed'?'<small>Total initial demandé : '+euros(o.total_ht)+' HT</small>':'')+
  (canEdit?'<button class="outline tiny edit-order" data-order="'+safe(o.id)+'">Modifier cette commande</button>':'<p class="muted">Commande verrouillée après confirmation.</p>')+'</div>';
  }).join(''):'<p>Aucune commande pour le moment.</p>';
  document.querySelectorAll('.edit-order').forEach(b=>b.onclick=()=>{const o=orders.find(o=>o.id===b.dataset.order);if(!o)return;
