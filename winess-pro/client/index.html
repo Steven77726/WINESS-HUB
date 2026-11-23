@@ -124,7 +124,7 @@ function render(){
  const checked=p.stock_checked_at?' · Actualisé '+new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'}).format(new Date(p.stock_checked_at)):' · En attente de synchronisation';
  const disabled=p.out_of_stock;
  const icon=p.photo?'<img class="photo" src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'<div class="photo-empty">♧</div>';
- return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock+checked)+'</div>'+
+ return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+(p.is_new?' <span class="new-tag">NOUVEAUTÉ</span>':'')+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock+checked)+'</div>'+
  (disabled?'<button class="outline tiny stock-alert" data-id="'+safe(p.id)+'">'+(p.alert_enabled?'🔔 Alerte activée':'♧ M’alerter du retour')+'</button>':
  '<div class="qtyrow"><div class="stepper"><button data-action="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-action="plus" data-id="'+safe(p.id)+'" '+(qty>=Math.min(60,p.max_quantity)?'disabled':'')+'>+</button></div><div><small>Total HT</small><div class="line-total">'+euros(qty*p.price_ht)+'</div></div></div>')+'</div></div>';
  }).join(''):'<p>Aucune référence dans cette catégorie.</p>';
