@@ -1,8 +1,8 @@
 {
   "name": "Winess PRO — Espace client",
   "short_name": "Winess PRO",
-  "description": "Votre catalogue professionnel et les nouveautés Winess",
-  "start_url": "./",
+  "description": "Accès fixe au catalogue NOOBA et aux notifications Winess PRO",
+  "start_url": "./?c=nooba",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f6f3",
@@ -14,5 +14,6 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "./?c=nooba"
 }
