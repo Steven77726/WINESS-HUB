@@ -119,7 +119,7 @@ async function getMessages(){
  $('unread-count').textContent=messages.filter(m=>!m.read_at).length||'';
  $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(m.title)+'</b><p>'+safe(m.body)+'</p><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">Ouvrir</button></div>').join(''):'<p>Pas de notification pour le moment.</p>';
  document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
- if(previous.size && messages.some(m=>!previous.has(m.id)&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
+ if(messages.some(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
  }catch(e){notice('Notifications indisponibles : '+e.message,true)}
 }
 async function getOrders(){try{const d=await call('orders');orders=d.orders;renderOrders()}catch(e){notice('Historique indisponible : '+e.message,true)}}
@@ -154,5 +154,6 @@ $('submit').onclick=async()=>{
 $('reload-orders').onclick=async()=>{await getOrders();await getMessages()};
 $('logout').onclick=()=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';location.reload()};
 $('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;if($('remember').checked){localStorage.setItem(key,session);sessionStorage.removeItem(key)}else{sessionStorage.setItem(key,session);localStorage.removeItem(key)}$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
+setInterval(()=>{if(session&&document.visibilityState==='visible')getMessages()},45000);
 if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key)||sessionStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
 </script></body></html>
