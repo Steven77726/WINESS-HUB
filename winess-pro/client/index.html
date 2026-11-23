@@ -62,7 +62,7 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 <div id="order-review" class="hide">
 <div class="pill" style="display:inline-block;margin-bottom:10px">ÉTAPE 2 SUR 2</div><h2>Vérifiez votre commande</h2>
 <p>Contrôlez vos références, corrigez les quantités et vérifiez le total HT avant l'envoi.</p>
-<div id="review-lines"></div>
+<div id="review-lines"></div><div id="review-comment" class="reviewnote hide"></div>
 <div class="reviewfooter"><div class="row"><b id="review-count"></b><div style="text-align:right"><small>TOTAL HT</small><div class="reviewtotal" id="review-total"></div></div></div>
 <div class="banner" style="margin-top:10px">Commande soumise à la confirmation des quantités par Winess. Aucun stock n'est garanti avant validation.</div>
 <div class="reviewactions"><button class="outline" id="review-back">Modifier mon panier</button><button id="review-send">Confirmer et envoyer ma commande</button></div></div>
@@ -154,6 +154,24 @@ function showReview(){
  reviewing=true;$('catalog-edit').classList.add('hide');$('order-review').classList.remove('hide');
  renderReview();$('order-review').scrollIntoView({behavior:'smooth',block:'start'});
 }
+function updateReviewTotals(){
+ const chosen=catalog.filter(p=>quantities[p.id]>0);
+ const count=chosen.reduce((n,p)=>n+quantities[p.id],0);
+ const total=chosen.reduce((n,p)=>n+quantities[p.id]*Number(p.price_ht),0);
+ $('review-count').textContent=count+' bouteille'+(count>1?'s':'');
+ $('review-total').textContent=euros(total);
+ const comment=$('order-comment').value.trim();
+ $('review-comment').textContent='Commentaire pour Winess : '+comment;
+ $('review-comment').classList.toggle('hide',!comment);
+ $('review-send').disabled=count===0||sending;
+ for(const input of document.querySelectorAll('[data-review-id]')){
+  const p=catalog.find(x=>x.id===input.dataset.reviewId);
+  const row=input.closest('.reviewrow');
+  if(!p||!row)continue;
+  const amount=row.querySelector('.row > b');
+  if(amount)amount.textContent=euros((quantities[p.id]||0)*Number(p.price_ht))+' HT';
+ }
+}
 function renderReview(){
  const chosen=catalog.filter(p=>quantities[p.id]>0);
  $('review-lines').innerHTML=chosen.length?chosen.map(p=>{
@@ -161,11 +179,8 @@ function renderReview(){
  return '<div class="reviewrow"><div class="row wrap"><div style="flex:1;min-width:160px"><b>'+safe(p.name)+'</b><br><small>'+safe(p.category||'')+' · '+euros(p.price_ht)+' HT par bouteille</small></div><b>'+euros(qty*p.price_ht)+' HT</b></div>'+
  '<div class="qtyrow"><div class="reviewstep"><button class="outline tiny" data-review-action="minus" data-product="'+safe(p.id)+'" aria-label="Retirer une bouteille">−</button><input class="reviewqty" type="number" min="0" max="'+max+'" step="1" value="'+qty+'" data-review-id="'+safe(p.id)+'" aria-label="Quantité de '+safe(p.name)+'"><button class="outline tiny" data-review-action="plus" data-product="'+safe(p.id)+'" '+(qty>=max?'disabled':'')+' aria-label="Ajouter une bouteille">+</button></div><button class="outline tiny" data-review-action="remove" data-product="'+safe(p.id)+'">Retirer la référence</button></div></div>'
  }).join(''):'<p>Votre panier est vide. Revenez au catalogue pour ajouter des références.</p>';
- const count=chosen.reduce((n,p)=>n+quantities[p.id],0);
- const total=chosen.reduce((n,p)=>n+quantities[p.id]*Number(p.price_ht),0);
- $('review-count').textContent=count+' bouteille'+(count>1?'s':'');
- $('review-total').textContent=euros(total);
- $('review-send').disabled=count===0||sending;
+ updateReviewTotals();
+ $('review-send').disabled=!chosen.length||sending;
  $('review-send').textContent=sending?'Envoi en cours…':editing?'Confirmer les modifications':'Confirmer et envoyer ma commande';
  document.querySelectorAll('[data-review-action]').forEach(b=>b.onclick=()=>{
   const p=catalog.find(x=>x.id===b.dataset.product);if(!p)return;
@@ -173,11 +188,19 @@ function renderReview(){
   quantities[p.id]=b.dataset.reviewAction==='remove'?0:Math.max(0,Math.min(max,val+(b.dataset.reviewAction==='plus'?1:-1)));
   renderReview();
  });
- document.querySelectorAll('[data-review-id]').forEach(input=>input.onchange=()=>{
-  const p=catalog.find(x=>x.id===input.dataset.reviewId);if(!p)return;
-  const n=Number(input.value),max=Math.min(60,p.max_quantity||60);
-  if(!Number.isInteger(n)||n<0||n>max){notice('Quantité valide : de 0 à '+max+' bouteilles.',true);input.value=quantities[p.id]||0;return}
-  quantities[p.id]=n;renderReview();
+ document.querySelectorAll('[data-review-id]').forEach(input=>{
+  input.oninput=()=>{
+   const p=catalog.find(x=>x.id===input.dataset.reviewId);if(!p)return;
+   const n=Number(input.value),max=Math.min(60,p.max_quantity||60);
+   if(input.value!==''&&Number.isInteger(n)&&n>=0&&n<=max){quantities[p.id]=n;updateReviewTotals()}
+   else $('review-send').disabled=true;
+  };
+  input.onchange=()=>{
+   const p=catalog.find(x=>x.id===input.dataset.reviewId);if(!p)return;
+   const n=Number(input.value),max=Math.min(60,p.max_quantity||60);
+   if(input.value===''||!Number.isInteger(n)||n<0||n>max){notice('Quantité valide : de 0 à '+max+' bouteilles.',true);input.value=quantities[p.id]||0;updateReviewTotals();return}
+   quantities[p.id]=n;renderReview();
+  };
  });
 }
 $('submit').onclick=showReview;
