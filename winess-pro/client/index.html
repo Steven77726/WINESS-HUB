@@ -53,7 +53,7 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 <div class="row wrap"><div><small>BIENVENUE</small><h2 id="client-name"></h2></div><span class="pill">Espace privé</span></div>
 <div id="new-banner" class="new-banner hide"><div><strong>✨ NOUVEAUTÉS WINESS</strong><p id="new-banner-text">Découvrez les nouvelles références choisies pour vous.</p></div><button id="new-banner-open">Découvrir</button></div>
 <div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="new">Nouveautés <span id="new-count"></span></button><button data-tab="history">Mes commandes</button><button data-tab="messages">Notifications <span id="unread-count"></span></button></div>
-<section id="new" class="card hide"><div class="row wrap"><div><span class="new-tag">SÉLECTION EXCLUSIVE</span><h2>Vos nouveautés</h2></div><button class="outline tiny" id="new-back">Retour au catalogue</button></div><p>De nouvelles références choisies pour votre établissement. Sélectionnez une quantité pour les ajouter à votre commande.</p><div id="new-products" class="new-grid"></div><div class="total"><span>Total de votre panier HT</span><strong id="new-total">0,00 €</strong></div><button id="new-checkout" class="full" style="margin-top:14px">Voir mon panier et commander</button></section>
+<section id="new" class="card hide"><div class="row wrap"><div><span class="new-tag">SÉLECTION EXCLUSIVE</span><h2>Vos nouveautés</h2></div><button class="outline tiny" id="new-back">Retour au catalogue</button></div><p>Ces références sont proposées en nouveauté et ne font pas encore partie de votre catalogue. Choisissez une quantité puis confirmez pour les accepter. Cette validation ne passe pas commande.</p><div id="new-products" class="new-grid"></div><div class="total"><span>Valeur de la sélection HT</span><strong id="new-total">0,00 €</strong></div><p class="muted">La validation ajoute la référence à votre catalogue et au panier, sans envoyer la commande.</p><button id="new-checkout" class="full" style="margin-top:14px">Valider mes nouveautés et les ajouter à mon catalogue</button><div id="new-accept-feedback" class="banner hide" role="status" aria-live="polite"></div></section>
 <section id="catalog" class="card"><div id="catalog-edit"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
 <div class="banner">Les stocks WineSitting ne sont pas encore synchronisés. Toute commande reste une demande soumise à confirmation par Winess. Une quantité n'est jamais garantie avant validation logistique.</div>
 <div id="filters" class="filters"></div><div id="products"></div>
@@ -82,7 +82,7 @@ const $=id=>document.getElementById(id);
 const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
-let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;let pushConfig=null;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
+let session='',catalog=[],quantities={},newQuantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false,newAccepting=false;let pushConfig=null;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
 async function call(action,more={}){
  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
  let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
@@ -96,35 +96,62 @@ function tab(id){
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);if(b.dataset.tab==='history')getOrders();if(b.dataset.tab==='new')renderNew()});
 $('new-banner-open').onclick=()=>{tab('new');renderNew()};
 $('new-back').onclick=()=>tab('catalog');
-$('new-checkout').onclick=()=>{tab('catalog');showReview()};
+$('new-checkout').onclick=async()=>{
+ if(newAccepting)return;
+ const selected=catalog.filter(p=>p.is_new&&!p.in_catalog&&newQuantities[p.id]>0);
+ if(!selected.length)return notice('Choisissez une quantité pour au moins une nouveauté.',true);
+ const label=selected.map(p=>p.name+' : '+newQuantities[p.id]).join(' ; ');
+ if(!confirm('Confirmez votre sélection : '+label+'. Ces références rejoindront votre catalogue, mais aucune commande ne sera envoyée.'))return;
+ newAccepting=true;renderNew();
+ const accepted=[],failures=[];
+ try{
+  for(const p of selected){
+   try{
+    const quantity=newQuantities[p.id];
+    await call('accept_new_product',{product_id:p.id,quantity});
+    accepted.push({id:p.id,name:p.name,quantity});
+    delete newQuantities[p.id];
+   }catch(e){failures.push(p.name+' : '+e.message)}
+  }
+  const d=await call('catalogue');
+  catalog=d.products||[];
+  for(const item of accepted){quantities[item.id]=(quantities[item.id]||0)+item.quantity}
+  for(const p of catalog){if(quantities[p.id]>Math.min(60,p.max_quantity||60))quantities[p.id]=Math.min(60,p.max_quantity||60)}
+  render();renderNew();
+  if(accepted.length){tab('catalog');notice(accepted.length+' nouveauté(s) ajoutée(s) à votre catalogue. La commande n’est pas encore envoyée.')}
+  if(failures.length){$('new-accept-feedback').textContent=failures.join(' | ');$('new-accept-feedback').classList.remove('hide');notice(failures.join(' | '),true)}
+ }catch(e){notice('Erreur de synchronisation du catalogue : '+e.message,true)}
+ finally{newAccepting=false;renderNew()}
+};
 function renderNew(){
  const newProducts=catalog.filter(p=>p.is_new);
  $('new-banner').classList.toggle('hide',!newProducts.length);
  $('new-count').textContent=newProducts.length?'('+newProducts.length+')':'';
  $('new-banner-text').textContent=newProducts.length+' nouvelle'+(newProducts.length>1?'s':'')+' référence'+(newProducts.length>1?'s':'')+' sélectionnée'+(newProducts.length>1?'s':'')+' pour vous';
  $('new-products').innerHTML=newProducts.length?newProducts.map(p=>{
- const qty=quantities[p.id]||0,limit=p.out_of_stock?0:Math.min(60,p.max_quantity||60);
+ const qty=newQuantities[p.id]||0,limit=p.out_of_stock?0:Math.min(60,p.max_quantity||60);
  return '<div class="new-card">'+(p.photo?'<img src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'')+'<span class="new-tag">NOUVEAUTÉ</span><div class="name">'+safe(p.name)+'</div><small>'+safe(p.category||'')+'</small><p class="price">'+euros(p.price_ht)+' HT</p><p class="stock">'+safe(p.stock_display||'Stock à confirmer')+'</p>'+(p.out_of_stock?'<button class="outline tiny new-alert" data-id="'+safe(p.id)+'">M’alerter du retour</button>':'<div class="stepper"><button data-new="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-new="plus" data-id="'+safe(p.id)+'" '+(qty>=limit?'disabled':'')+'>+</button></div>')+'</div>'
  }).join(''):'<p>Aucune nouveauté actuellement pour votre établissement.</p>';
- document.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{const p=catalog.find(x=>x.id===b.dataset.id);if(!p)return;quantities[p.id]=Math.max(0,Math.min(Math.min(60,p.max_quantity||60),(quantities[p.id]||0)+(b.dataset.new==='plus'?1:-1)));renderNew();render()});
+ document.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{const p=catalog.find(x=>x.id===b.dataset.id);if(!p)return;newQuantities[p.id]=Math.max(0,Math.min(Math.min(60,p.max_quantity||60),(newQuantities[p.id]||0)+(b.dataset.new==='plus'?1:-1)));renderNew()});
  document.querySelectorAll('.new-alert').forEach(b=>b.onclick=async()=>{const p=catalog.find(x=>x.id===b.dataset.id);if(!p)return;try{const d=await call('stock_alert',{product_id:p.id,enabled:!p.alert_enabled});p.alert_enabled=d.enabled;renderNew();notice(d.enabled?'Alerte de retour en stock activée dans votre compte.':'Alerte désactivée.')}catch(e){notice(e.message,true)}});
- $('new-total').textContent=euros(catalog.reduce((total,p)=>total+(quantities[p.id]||0)*Number(p.price_ht),0));
- $('new-checkout').disabled=!catalog.some(p=>quantities[p.id]>0);
+ $('new-total').textContent=euros(catalog.filter(p=>p.is_new).reduce((total,p)=>total+(newQuantities[p.id]||0)*Number(p.price_ht),0));
+ $('new-checkout').disabled=newAccepting||!catalog.some(p=>p.is_new&&newQuantities[p.id]>0);$('new-checkout').textContent=newAccepting?'Validation en cours…':'Valider mes nouveautés et les ajouter à mon catalogue';
 }
 
 function render(){
- const categories=['Tous',...new Set(catalog.map(p=>p.category||'Autres'))];
+ const regular=catalog.filter(p=>p.in_catalog===true);
+ const categories=['Tous',...new Set(regular.map(p=>p.category||'Autres'))];
  if(!categories.includes(filter))filter='Tous';
  $('filters').innerHTML=categories.map(c=>'<button class="filter '+(filter===c?'selected':'')+'" data-filter="'+safe(c)+'">'+safe(c)+'</button>').join('');
  document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render()});
- const visible=catalog.filter(p=>filter==='Tous'||(p.category||'Autres')===filter);
+ const visible=regular.filter(p=>filter==='Tous'||(p.category||'Autres')===filter);
  $('products').innerHTML=visible.length?visible.map((p,i)=>{
  const qty=quantities[p.id]||0;
  const stock=p.stock_display||'Stock à confirmer';
  const checked=p.stock_checked_at?' · Actualisé '+new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'}).format(new Date(p.stock_checked_at)):' · En attente de synchronisation';
  const disabled=p.out_of_stock;
  const icon=p.photo?'<img class="photo" src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'<div class="photo-empty">♧</div>';
- return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+(p.is_new?' <span class="new-tag">NOUVEAUTÉ</span>':'')+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock+checked)+'</div>'+
+ return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock+checked)+'</div>'+
  (disabled?'<button class="outline tiny stock-alert" data-id="'+safe(p.id)+'">'+(p.alert_enabled?'🔔 Alerte activée':'♧ M’alerter du retour')+'</button>':
  '<div class="qtyrow"><div class="stepper"><button data-action="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-action="plus" data-id="'+safe(p.id)+'" '+(qty>=Math.min(60,p.max_quantity)?'disabled':'')+'>+</button></div><div><small>Total HT</small><div class="line-total">'+euros(qty*p.price_ht)+'</div></div></div>')+'</div></div>';
  }).join(''):'<p>Aucune référence dans cette catégorie.</p>';
@@ -152,6 +179,7 @@ async function refreshClientStock(){
    const maximum=item.out_of_stock?0:Math.min(60,item.max_quantity||60);
    if(qty>maximum){quantities[id]=maximum;notice('Stock mis à jour : la quantité du panier a été ajustée pour '+item.name+'.',true)}
   }
+  for(const p of catalog){if(p.is_new&&newQuantities[p.id]>Math.min(60,p.max_quantity||60))newQuantities[p.id]=Math.min(60,p.max_quantity||60)}
   if(reviewing)renderReview();else render();renderNew();
  }catch(e){console.warn('Stock actualisation:',e.message)}
 }
