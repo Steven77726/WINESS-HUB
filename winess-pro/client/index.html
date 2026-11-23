@@ -122,10 +122,27 @@ async function load(){const d=await call('catalogue');catalog=d.products; $('cli
 function openPopup(title,body,orderId=null){popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
 $('popup-close').onclick=()=>$('popup').classList.add('hide');
 $('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};
+function messageDate(value){
+ return new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Paris'}).format(new Date(value));
+}
+function messageHeading(m){
+ if(m.kind==='order_received')return 'Commande du '+messageDate(m.created_at).split(' ')[0];
+ if(m.kind==='order_changed')return 'Modification de commande du '+messageDate(m.created_at).split(' ')[0];
+ return m.title;
+}
+function messageDetails(m){
+ if(m.kind==='order_received'||m.kind==='order_changed'){
+  const count=m.bottle_count;
+  const countText=count===null||count===undefined?'Quantités à consulter dans la commande':count+' bouteille'+(count===1?'':'s');
+  const lines=(m.line_summary||[]).map(x=>x.quantity+' × '+x.name).join(' · ');
+  return 'Commande n°'+(m.order_number||'—')+' · '+countText+(lines?'\n'+lines:'')+'\n'+(m.kind==='order_received'?'Commande reçue, en attente de confirmation Winess.':'Modification enregistrée, en attente de confirmation Winess.');
+ }
+ return m.body;
+}
 async function getMessages(){
  try{const d=await call('messages');const previous=new Set(messages.map(m=>m.id));messages=d.messages||[];
  $('unread-count').textContent=messages.filter(m=>!m.read_at).length||'';
- $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(m.title)+'</b><p>'+safe(m.body)+'</p><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">Ouvrir</button></div>').join(''):'<p>Pas de notification pour le moment.</p>';
+ $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(messageHeading(m))+'</b><p style="white-space:pre-line">'+safe(messageDetails(m))+'</p><small>'+safe(messageDate(m.created_at))+'</small><div style="margin-top:10px"><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">Voir la commande</button></div></div>').join(''):'<p>Pas de notification pour le moment.</p>';
  document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
  if(messages.some(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
  }catch(e){notice('Notifications indisponibles : '+e.message,true)}
