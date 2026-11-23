@@ -101,9 +101,10 @@ function render(){
  $('products').innerHTML=visible.length?visible.map((p,i)=>{
  const qty=quantities[p.id]||0;
  const stock=p.stock_display||'Stock à confirmer';
+ const checked=p.stock_checked_at?' · Actualisé '+new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'}).format(new Date(p.stock_checked_at)):' · En attente de synchronisation';
  const disabled=p.out_of_stock;
  const icon=p.photo?'<img class="photo" src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'<div class="photo-empty">♧</div>';
- return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock)+'</div>'+
+ return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock+checked)+'</div>'+
  (disabled?'<button class="outline tiny stock-alert" data-id="'+safe(p.id)+'">'+(p.alert_enabled?'🔔 Alerte activée':'♧ M’alerter du retour')+'</button>':
  '<div class="qtyrow"><div class="stepper"><button data-action="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-action="plus" data-id="'+safe(p.id)+'" '+(qty>=Math.min(60,p.max_quantity)?'disabled':'')+'>+</button></div><div><small>Total HT</small><div class="line-total">'+euros(qty*p.price_ht)+'</div></div></div>')+'</div></div>';
  }).join(''):'<p>Aucune référence dans cette catégorie.</p>';
@@ -117,6 +118,22 @@ function render(){
  $('cancel-edit').classList.toggle('hide',!editing);
  $('editing-note').classList.toggle('hide',!editing);
  $('editing-note').textContent=editing?'Modification de la commande #'+editing.order_number+' (version '+editing.version+'). Les disponibilités et tarifs actuels seront revérifiés.':'';
+}
+async function refreshClientStock(){
+ if(!session||!catalog.length||sending)return;
+ try{
+  const d=await call('catalogue');
+  const latest=new Map((d.products||[]).map(p=>[p.id,p]));
+  // Preserve cart quantities but enforce updated stock maximum.
+  catalog=d.products||[];
+  for(const [id,qty] of Object.entries(quantities)){
+   const item=latest.get(id);
+   if(!item){quantities[id]=0;continue}
+   const maximum=item.out_of_stock?0:Math.min(60,item.max_quantity||60);
+   if(qty>maximum){quantities[id]=maximum;notice('Stock mis à jour : la quantité du panier a été ajustée pour '+item.name+'.',true)}
+  }
+  if(reviewing)renderReview();else render();
+ }catch(e){console.warn('Stock actualisation:',e.message)}
 }
 async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();}
 function openPopup(title,body,orderId=null){popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
@@ -246,5 +263,7 @@ $('reload-orders').onclick=async()=>{await getOrders();await getMessages()};
 $('logout').onclick=()=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';location.reload()};
 $('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;if($('remember').checked){localStorage.setItem(key,session);sessionStorage.removeItem(key)}else{sessionStorage.setItem(key,session);localStorage.removeItem(key)}$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
 setInterval(()=>{if(session&&document.visibilityState==='visible')getMessages()},45000);
+setInterval(()=>{if(session&&document.visibilityState==='visible')refreshClientStock()},120000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&session)refreshClientStock()});
 if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key)||sessionStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
 </script></body></html>
