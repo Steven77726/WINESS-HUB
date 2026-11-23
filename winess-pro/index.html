@@ -140,7 +140,7 @@ $('cancel-product').onclick=()=>{editingProductId=null;['product-name','product-
 /* Référentiel export Excel privé — jamais exposé au catalogue des clients. */
 const sourceStatus=(s,error=false)=>{const el=$('source-import-state');el.textContent=s;el.style.color=error?'#a23b27':'#365e4a'};
 let sourceSearchTimer=null,sourceUploadRunning=false,sourceRows=[],sourceSearchReq=0;
-const normalizeCatalogTerm=s=>String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+const normalizeCatalogTerm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 function detectWinessCategory(type,color,family){
  const t=normalizeCatalogTerm(type),c=normalizeCatalogTerm(color),f=normalizeCatalogTerm(family);
  if(t.includes('champagne'))return 'Champagne';
@@ -195,7 +195,7 @@ function parseSourceExcel(matrix,filename){
   if(!name)continue;
   const variant=col.variant>=0?String(row[col.variant]||'').trim():'';
   const raw=row[col.pro];
-  const numeric=typeof raw==='number'?raw:Number(String(raw??'').replace(/\\s/g,'').replace(',','.'));
+  const numeric=typeof raw==='number'?raw:Number(String(raw??'').replace(/\s/g,'').replace(',','.'));
   const validPrice=raw!==null&&raw!==''&&Number.isFinite(numeric)&&numeric>=0;
   const price=validPrice?Number(numeric.toFixed(2)):null;
   let p=bySku.get(sku);
@@ -213,7 +213,7 @@ function parseSourceExcel(matrix,filename){
 $('source-file').onchange=async()=>{
  const file=$('source-file').files?.[0];
  if(!file||sourceUploadRunning)return;
- if(!/\\.(xlsx|xls|csv)$/i.test(file.name))return sourceStatus('Choisis un fichier Excel ou CSV.',true);
+ if(!/\.(xlsx|xls|csv)$/i.test(file.name))return sourceStatus('Choisis un fichier Excel ou CSV.',true);
  if(!confirm('Importer les références de '+file.name+' dans la base de recherche privée Winess PRO ? Les produits et les tarifs clients existants resteront inchangés.'))return;
  sourceUploadRunning=true;$('source-file').disabled=true;
  try{
@@ -244,7 +244,7 @@ async function searchSource(){
  // Validate wildcard characters: search literal text, not a user-defined SQL pattern.
  const q=input.replace(/[%_,()]/g,' ').trim();
  if(!q){target.innerHTML='';return}
- const escaped=q.replace(/[\\\\]/g,' ').slice(0,85);
+ const escaped=q.replace(/[\\]/g,' ').slice(0,85);
  const {data,error}=await db.from('winess_source_catalog').select('sku,full_name,category,price_pro_ht,price_conflict,price_candidates,source_rows').or('full_name.ilike.%'+escaped+'%,sku.ilike.%'+escaped+'%').order('full_name').limit(80);
  if(request!==sourceSearchReq)return;
  if(error){target.innerHTML='<small>Recherche indisponible : '+escape(error.message)+'</small>';return}
