@@ -45,24 +45,24 @@ input::placeholder{color:#94a599}
 .historyline{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
 .bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}
 @media(max-width:520px){.shell{padding:17px 12px 80px}.card{padding:17px}.product{grid-template-columns:67px minmax(0,1fr);gap:11px}.photo,.photo-empty{width:67px;height:99px}.row.wrap{align-items:flex-start}}
-</style></head><body>
+.filters{display:flex;gap:7px;overflow-x:auto;padding:12px 0}.filter{flex-shrink:0;background:#e8eee8;color:#315040;padding:9px 14px;border-radius:30px}.filter.selected{background:#1b4937;color:#fff}.msgentry{border-bottom:1px solid #e7ede7;padding:12px 0}.popwrap{position:fixed;inset:0;background:#0e2119a8;display:flex;align-items:center;justify-content:center;padding:18px;z-index:100}.pop{width:min(100%,430px);padding:26px;border-radius:19px;background:#fff;text-align:center;box-shadow:0 20px 55px #0003}.pop button{margin-top:20px}.remember{display:flex;align-items:center;gap:10px;margin:15px 0;font-size:14px}.remember input{width:18px;height:18px;accent-color:#1b4937}</style></head><body>
 <div class="shell">
 <header><div><h1>WINESS <span>PRO</span></h1><small>VOTRE SÉLECTION PROFESSIONNELLE</small></div><button id="logout" class="outline tiny hide">Déconnexion</button></header>
-<section id="login" class="card"><h2>Accès à votre espace</h2><p>Entrez votre code personnel Winess. La connexion est conservée jusqu'à 30 jours sur cet appareil.</p><label for="code">Code d'accès</label><input id="code" type="password" minlength="4" autocomplete="off" placeholder="Votre code personnel"><button id="enter" class="full" style="margin-top:14px">Accéder à mon catalogue</button></section>
+<section id="login" class="card"><h2>Accès à votre espace</h2><p>Entrez votre code personnel Winess. La connexion est conservée jusqu'à 30 jours sur cet appareil.</p><label for="code">Code d'accès</label><input id="code" type="password" minlength="4" autocomplete="off" placeholder="Votre code personnel"><label class="remember"><input id="remember" type="checkbox" checked> Mémoriser ma connexion pendant 30 jours</label><button id="enter" class="full" style="margin-top:14px">Accéder à mon catalogue</button></section>
 <div id="app" class="hide">
 <div class="row wrap"><div><small>BIENVENUE</small><h2 id="client-name"></h2></div><span class="pill">Espace privé</span></div>
-<div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="history">Mes commandes</button></div>
+<div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="history">Mes commandes</button><button data-tab="messages">Notifications <span id="unread-count"></span></button></div>
 <section id="catalog" class="card"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
 <div class="banner">Les stocks WineSitting ne sont pas encore synchronisés. Toute commande reste une demande soumise à confirmation par Winess. Une quantité n'est jamais garantie avant validation logistique.</div>
-<div id="products"></div>
+<div id="filters" class="filters"></div><div id="products"></div>
 <div class="total"><span>TOTAL COMMANDE HT</span><strong id="grand-total">0,00 €</strong></div><p id="count" class="muted">0 bouteille</p>
 <div id="editing-note" class="banner hide"></div>
 <div class="row" style="margin-top:12px"><button class="full" id="submit">Envoyer ma demande de commande</button><button id="cancel-edit" class="outline hide">Annuler</button></div>
 <small>Le traitement logistique est soumis aux horaires Winess. Une modification est possible uniquement avant confirmation, et avant 12h30 le jour du traitement.</small>
 </section>
-<section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
+<section id="messages" class="card hide"><h3>Mes notifications</h3><div id="messages-list"></div></section><section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
 </div>
-<div id="notice" role="status" aria-live="polite"></div>
+<div id="notice" role="status" aria-live="polite"></div><div id="popup" class="popwrap hide"><div class="pop"><h2 id="popup-title"></h2><p id="popup-body"></p><button id="popup-view">Voir ma commande</button> <button class="outline" id="popup-close">Fermer</button></div></div>
 </div>
 <script>
 const API='https://azjiryszenzwkwnnnsar.supabase.co/functions/v1/winess-client-access';
@@ -72,7 +72,7 @@ const $=id=>document.getElementById(id);
 const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
-let session='',catalog=[],quantities={},orders=[],editing=null;
+let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null;
 async function call(action,more={}){
  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
  let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
@@ -81,11 +81,16 @@ async function call(action,more={}){
 }
 function tab(id){
  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
- ['catalog','history'].forEach(t=>$(t).classList.toggle('hide',t!==id));
+ ['catalog','history','messages'].forEach(t=>$(t).classList.toggle('hide',t!==id));if(id==='messages')getMessages();
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);if(b.dataset.tab==='history')getOrders()});
 function render(){
- $('products').innerHTML=catalog.length?catalog.map((p,i)=>{
+ const categories=['Tous',...new Set(catalog.map(p=>p.category||'Autres'))];
+ if(!categories.includes(filter))filter='Tous';
+ $('filters').innerHTML=categories.map(c=>'<button class="filter '+(filter===c?'selected':'')+'" data-filter="'+safe(c)+'">'+safe(c)+'</button>').join('');
+ document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render()});
+ const visible=catalog.filter(p=>filter==='Tous'||(p.category||'Autres')===filter);
+ $('products').innerHTML=visible.length?visible.map((p,i)=>{
  const qty=quantities[p.id]||0;
  const stock=p.stock_display||'Stock à confirmer';
  const disabled=p.out_of_stock;
@@ -93,7 +98,7 @@ function render(){
  return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock)+'</div>'+
  (disabled?'<button class="outline tiny stock-alert" data-id="'+safe(p.id)+'">'+(p.alert_enabled?'🔔 Alerte activée':'♧ M’alerter du retour')+'</button>':
  '<div class="qtyrow"><div class="stepper"><button data-action="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-action="plus" data-id="'+safe(p.id)+'" '+(qty>=Math.min(60,p.max_quantity)?'disabled':'')+'>+</button></div><div><small>Total HT</small><div class="line-total">'+euros(qty*p.price_ht)+'</div></div></div>')+'</div></div>';
- }).join(''):'<p>Votre sélection est en cours de configuration.</p>';
+ }).join(''):'<p>Aucune référence dans cette catégorie.</p>';
  document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>{const p=catalog.find(p=>p.id===b.dataset.id);if(!p)return;const old=quantities[p.id]||0;quantities[p.id]=Math.max(0,Math.min(Math.min(60,p.max_quantity),old+(b.dataset.action==='plus'?1:-1)));render()});
  document.querySelectorAll('.stock-alert').forEach(b=>b.onclick=async()=>{const p=catalog.find(p=>p.id===b.dataset.id);if(!p)return;try{const d=await call('stock_alert',{product_id:p.id,enabled:!p.alert_enabled});p.alert_enabled=d.enabled;render();notice(d.enabled?'Alerte demandée. Vous serez prévenu après activation du système de notifications.':'Alerte désactivée.')}catch(e){notice(e.message,true)}});
  const chosen=catalog.filter(p=>(quantities[p.id]||0)>0);
@@ -105,13 +110,25 @@ function render(){
  $('editing-note').classList.toggle('hide',!editing);
  $('editing-note').textContent=editing?'Modification de la commande #'+editing.order_number+' (version '+editing.version+'). Les disponibilités et tarifs actuels seront revérifiés.':'';
 }
-async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();notice('Catalogue sécurisé chargé.');await getOrders();}
+async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();}
+function openPopup(title,body,orderId=null){popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
+$('popup-close').onclick=()=>$('popup').classList.add('hide');
+$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};
+async function getMessages(){
+ try{const d=await call('messages');const previous=new Set(messages.map(m=>m.id));messages=d.messages||[];
+ $('unread-count').textContent=messages.filter(m=>!m.read_at).length||'';
+ $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(m.title)+'</b><p>'+safe(m.body)+'</p><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">Ouvrir</button></div>').join(''):'<p>Pas de notification pour le moment.</p>';
+ document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
+ if(previous.size && messages.some(m=>!previous.has(m.id)&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
+ }catch(e){notice('Notifications indisponibles : '+e.message,true)}
+}
 async function getOrders(){try{const d=await call('orders');orders=d.orders;renderOrders()}catch(e){notice('Historique indisponible : '+e.message,true)}}
 function renderOrders(){
  $('orders').innerHTML=orders.length?orders.map(o=>{
  const canEdit=['received','review'].includes(o.status);
- return '<div class="history"><div class="row"><b>Commande #'+safe(o.order_number)+'</b><span class="pill">'+safe(o.status==='review'?'À vérifier':o.status==='received'?'Reçue':o.status==='confirmed'?'Confirmée':o.status)+'</span></div><small>'+new Date(o.created_at).toLocaleDateString('fr-FR')+' · Traitement prévu '+safe(o.processing_date)+'</small>'+
- (o.order_items||[]).map(i=>'<div class="historyline"><div>'+safe(i.product_name)+'<br><small>'+safe(i.quantity)+' × '+euros(i.unit_price_ht)+' HT</small></div><b>'+euros(i.line_total_ht)+'</b></div>').join('')+
+ return '<div class="history" data-order-container="'+safe(o.id)+'"><div class="row"><b>Commande #'+safe(o.order_number)+'</b><span class="pill">'+safe(o.status==='review'?'À vérifier':o.status==='received'?'Reçue':o.status==='confirmed'?'Confirmée':o.status)+'</span></div><small>'+new Date(o.created_at).toLocaleDateString('fr-FR')+' · Traitement prévu '+safe(o.processing_date)+'</small>'+
+ (o.order_items||[]).map(i=>'<div class="historyline"><div>'+safe(i.product_name)+'<br><small>Demandé : '+safe(i.quantity)+' × '+euros(i.unit_price_ht)+' HT'+(i.confirmed_quantity!==null?' · Confirmé : '+safe(i.confirmed_quantity):'')+'</small></div><b>'+euros((i.confirmed_quantity??i.quantity)*i.unit_price_ht)+'</b></div>').join('')+
+ (o.status==='confirmed'?'<p><b>Commande confirmée : '+(o.order_items||[]).reduce((n,i)=>n+(i.confirmed_quantity??0),0)+'/'+(o.order_items||[]).reduce((n,i)=>n+i.quantity,0)+' bouteilles</b></p>':'')+
  '<div class="row"><b>Total HT</b><b>'+euros(o.total_ht)+'</b></div>'+
  (canEdit?'<button class="outline tiny edit-order" data-order="'+safe(o.id)+'">Modifier cette commande</button>':'<p class="muted">Commande verrouillée après confirmation.</p>')+'</div>';
  }).join(''):'<p>Aucune commande pour le moment.</p>';
@@ -131,11 +148,11 @@ $('submit').onclick=async()=>{
  try{
  const d=await call('submit_order',{lines,...(editing?{order_id:editing.id,version:editing.version}:{})});
  editing=null;quantities={};render();await getOrders();tab('history');
- notice('Demande #'+d.order.order_number+' enregistrée dans Winess PRO. Elle est à vérifier et doit être confirmée manuellement. L’envoi e-mail au commercial n’est pas encore activé.');
+ openPopup('Commande envoyée','Votre demande n°'+d.order.order_number+' a bien été reçue. Confirmation des quantités par Winess en attente.',d.order.id);notice('Commande envoyée et enregistrée. L’envoi e-mail au commercial n’est pas encore activé.');
  }catch(e){notice('Commande non enregistrée : '+e.message,true)}finally{$('submit').disabled=false}
 };
-$('reload-orders').onclick=getOrders;
-$('logout').onclick=()=>{localStorage.removeItem(key);session='';location.reload()};
-$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;localStorage.setItem(key,session);$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
-if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
+$('reload-orders').onclick=async()=>{await getOrders();await getMessages()};
+$('logout').onclick=()=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';location.reload()};
+$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;if($('remember').checked){localStorage.setItem(key,session);sessionStorage.removeItem(key)}else{sessionStorage.setItem(key,session);localStorage.removeItem(key)}$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
+if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key)||sessionStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
 </script></body></html>
