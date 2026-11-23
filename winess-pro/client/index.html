@@ -1,1 +1,141 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#194638"><title>WINESS PRO — Espace client</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f6f4;color:#203a30;font-family:system-ui,-apple-system,Arial}.shell{max-width:740px;margin:30px auto;padding:16px}.card{background:white;border:1px solid #e0e7e0;padding:24px;border-radius:18px;margin:16px 0;box-shadow:0 4px 26px #1933220c}h1{letter-spacing:2px;font-size:28px}h1 span{font-weight:300;color:#688b79}h2{margin-top:0}p{color:#60766b}label{display:block;margin:16px 0 6px;font-size:14px;font-weight:700}input{width:100%;padding:13px;font-size:18px;border:1px solid #b9caba;border-radius:9px;background:white;color:#18392b}button{background:#1b4a37;color:white;border:0;border-radius:9px;padding:13px 17px;margin-top:14px;cursor:pointer;font-weight:700}.alt{background:#e2eee5;color:#234937}.item{display:flex;align-items:center;gap:15px;padding:14px 0;border-bottom:1px solid #e8eee8}.item img{width:55px;height:80px;object-fit:contain}.item>div{flex:1}.error{background:#fff0ea;color:#973d2d}.msg{padding:12px;border-radius:9px;background:#eaf1e9;white-space:pre-wrap}.hide{display:none!important}.price{font-size:18px;font-weight:700}.tiny{font-size:12px}</style></head><body><main class="shell"><h1>WINESS <span>PRO</span></h1><p>Votre sélection professionnelle, en toute confidentialité.</p><section id="login" class="card"><h2>Catalogue privé</h2><p>Saisissez le code d'accès transmis par Winess. Votre connexion restera valable jusqu'à 30 jours sur cet appareil.</p><label>Votre code personnel</label><input id="code" type="password" autocomplete="off" minlength="4" placeholder="Code d'accès" /><button id="enter">Accéder à mon catalogue</button></section><section id="catalogue" class="card hide"><h2 id="client-name">Votre catalogue</h2><p>Vos références habituelles et tarifs professionnels HT.</p><div id="products"></div><p class="tiny">Les commandes en ligne, disponibilités WineSitting et notifications sont encore en préparation. Contactez votre commercial pour commander.</p><button class="alt" id="logout">Se déconnecter</button></section><div id="notice" role="status"></div></main><script>const api='https://azjiryszenzwkwnnnsar.supabase.co/functions/v1/winess-client-access',slug=new URLSearchParams(location.search).get('c')||'',key='winesspro_session_'+slug;const $=id=>document.getElementById(id),escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),notice=(s,err=false)=>{$('notice').className='msg'+(err?' error':'');$('notice').textContent=s};async function post(v){const r=await fetch(api,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(v)});const d=await r.json();if(!r.ok)throw Error(d.error||'Accès impossible');return d}async function load(session){const d=await post({action:'catalogue',session});$('login').classList.add('hide');$('catalogue').classList.remove('hide');$('client-name').textContent='Catalogue '+d.client;$('products').innerHTML=d.products.length?d.products.map(p=>'<div class="item">'+(p.photo?'<img src="'+escape(p.photo)+'" alt="">':'')+'<div><b>'+escape(p.name)+'</b><p>'+escape(p.ref||'')+'</p><span class="price">'+Number(p.price_ht).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' € HT</span></div></div>').join(''):'<p>Votre catalogue est en cours de préparation.</p>';notice('Accès sécurisé activé.')}if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Lien client invalide. Demandez votre lien personnel à Winess.',true);$('enter').disabled=true}else{const old=localStorage.getItem(key);if(old)load(old).catch(()=>{localStorage.removeItem(key);notice('Votre session a expiré. Saisissez à nouveau votre code.',true)})}$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await post({action:'login',slug,code});localStorage.setItem(key,d.session);$('code').value='';await load(d.session)}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};$('logout').onclick=()=>{localStorage.removeItem(key);location.reload()};</script></body></html>
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#183f32">
+<title>WINESS PRO — Espace professionnel</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f3;color:#203b30;font-family:system-ui,-apple-system,Arial,sans-serif}
+.shell{max-width:860px;margin:0 auto;padding:22px 16px 90px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:25px}
+h1{font-size:27px;letter-spacing:2px;margin:0}h1 span{font-weight:300;color:#749481}h2{font-size:21px;margin:4px 0 10px}h3{font-size:17px}
+p{color:#64796d;line-height:1.5}small,.muted{color:#6d8277;font-size:12px}
+button{background:#1b4937;color:white;border:0;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:650;cursor:pointer}
+button:disabled{opacity:.42;cursor:not-allowed}
+button.outline{background:#e7eee8;color:#204436}
+button.tiny{padding:9px 11px;font-size:12px}
+button.alert{background:#eff5ee;color:#285d43}
+input{background:white!important;color:#18362b!important;border:1px solid #c3d0c6;border-radius:10px;padding:13px;font-size:16px;width:100%}
+input::placeholder{color:#94a599}
+.card{background:white;border:1px solid #e0e8df;border-radius:17px;padding:22px;margin:14px 0;box-shadow:0 5px 24px #21422c0a}
+.row{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.row.wrap{flex-wrap:wrap}
+.hide{display:none!important}
+.pill{font-size:11px;border-radius:20px;background:#e6efe6;color:#386a47;padding:5px 9px;font-weight:700}
+.banner{padding:13px;background:#f0f4ef;border:1px solid #dde8dc;border-radius:12px;color:#456050;font-size:13px;line-height:1.5}
+.notice{padding:12px 14px;border-radius:10px;background:#e8f3e8;color:#234931;white-space:pre-wrap;margin:10px 0;font-size:13px}
+.notice.error{background:#fff1eb;color:#9e3e2d}
+.tabs{display:flex;gap:8px;margin:16px 0}
+.tabs button{flex:1;background:#e8eee8;color:#315040}
+.tabs button.active{background:#1b4937;color:white}
+.product{display:grid;grid-template-columns:80px minmax(0,1fr);gap:16px;padding:20px 0;border-bottom:1px solid #e9eeea}
+.product:last-child{border-bottom:0}
+.photo{width:80px;height:112px;object-fit:contain;background:#f9faf8;border-radius:8px}
+.photo-empty{width:80px;height:112px;background:#f3f5f0;border-radius:8px;display:grid;place-items:center;font-size:30px;color:#728777}
+.name{font-size:16px;font-weight:720;margin:0 0 4px}
+.price{font-size:16px;font-weight:760}
+.stock{font-size:12px;color:#4a815e;margin:7px 0}
+.stock.warn{color:#a65b35}
+.qtyrow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper button{width:35px;height:35px;padding:0;background:#e9f0e9;color:#26503d;font-size:19px}
+.stepper strong{min-width:26px;text-align:center}
+.line-total{font-weight:700;font-size:14px}
+.total{display:flex;justify-content:space-between;align-items:center;padding-top:17px;border-top:1px solid #e3eae4;font-weight:800}
+.total strong{font-size:23px}
+.full{width:100%}
+.history{border:1px solid #e1e8e0;border-radius:12px;padding:14px;margin:12px 0}
+.historyline{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
+.bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}
+@media(max-width:520px){.shell{padding:17px 12px 80px}.card{padding:17px}.product{grid-template-columns:67px minmax(0,1fr);gap:11px}.photo,.photo-empty{width:67px;height:99px}.row.wrap{align-items:flex-start}}
+</style></head><body>
+<div class="shell">
+<header><div><h1>WINESS <span>PRO</span></h1><small>VOTRE SÉLECTION PROFESSIONNELLE</small></div><button id="logout" class="outline tiny hide">Déconnexion</button></header>
+<section id="login" class="card"><h2>Accès à votre espace</h2><p>Entrez votre code personnel Winess. La connexion est conservée jusqu'à 30 jours sur cet appareil.</p><label for="code">Code d'accès</label><input id="code" type="password" minlength="4" autocomplete="off" placeholder="Votre code personnel"><button id="enter" class="full" style="margin-top:14px">Accéder à mon catalogue</button></section>
+<div id="app" class="hide">
+<div class="row wrap"><div><small>BIENVENUE</small><h2 id="client-name"></h2></div><span class="pill">Espace privé</span></div>
+<div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="history">Mes commandes</button></div>
+<section id="catalog" class="card"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
+<div class="banner">Les stocks WineSitting ne sont pas encore synchronisés. Toute commande reste une demande soumise à confirmation par Winess. Une quantité n'est jamais garantie avant validation logistique.</div>
+<div id="products"></div>
+<div class="total"><span>TOTAL COMMANDE HT</span><strong id="grand-total">0,00 €</strong></div><p id="count" class="muted">0 bouteille</p>
+<div id="editing-note" class="banner hide"></div>
+<div class="row" style="margin-top:12px"><button class="full" id="submit">Envoyer ma demande de commande</button><button id="cancel-edit" class="outline hide">Annuler</button></div>
+<small>Le traitement logistique est soumis aux horaires Winess. Une modification est possible uniquement avant confirmation, et avant 12h30 le jour du traitement.</small>
+</section>
+<section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
+</div>
+<div id="notice" role="status" aria-live="polite"></div>
+</div>
+<script>
+const API='https://azjiryszenzwkwnnnsar.supabase.co/functions/v1/winess-client-access';
+const slug=new URLSearchParams(location.search).get('c')||'';
+const key='winesspro_session_'+slug;
+const $=id=>document.getElementById(id);
+const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
+const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
+let session='',catalog=[],quantities={},orders=[],editing=null;
+async function call(action,more={}){
+ const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
+ let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
+ if(!r.ok)throw Error(d.error||'Une erreur serveur est survenue');
+ return d;
+}
+function tab(id){
+ document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+ ['catalog','history'].forEach(t=>$(t).classList.toggle('hide',t!==id));
+}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);if(b.dataset.tab==='history')getOrders()});
+function render(){
+ $('products').innerHTML=catalog.length?catalog.map((p,i)=>{
+ const qty=quantities[p.id]||0;
+ const stock=p.stock_display||'Stock à confirmer';
+ const disabled=p.out_of_stock;
+ const icon=p.photo?'<img class="photo" src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'<div class="photo-empty">♧</div>';
+ return '<div class="product">'+icon+'<div><div class="name">'+safe(p.name)+'</div><small>'+safe(p.ref||'')+'</small><div class="price">'+euros(p.price_ht)+' HT / bouteille</div><div class="stock '+(p.stock_known?'':'warn')+'">'+safe(stock)+'</div>'+
+ (disabled?'<button class="outline tiny stock-alert" data-id="'+safe(p.id)+'">'+(p.alert_enabled?'🔔 Alerte activée':'♧ M’alerter du retour')+'</button>':
+ '<div class="qtyrow"><div class="stepper"><button data-action="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-action="plus" data-id="'+safe(p.id)+'" '+(qty>=Math.min(60,p.max_quantity)?'disabled':'')+'>+</button></div><div><small>Total HT</small><div class="line-total">'+euros(qty*p.price_ht)+'</div></div></div>')+'</div></div>';
+ }).join(''):'<p>Votre sélection est en cours de configuration.</p>';
+ document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>{const p=catalog.find(p=>p.id===b.dataset.id);if(!p)return;const old=quantities[p.id]||0;quantities[p.id]=Math.max(0,Math.min(Math.min(60,p.max_quantity),old+(b.dataset.action==='plus'?1:-1)));render()});
+ document.querySelectorAll('.stock-alert').forEach(b=>b.onclick=async()=>{const p=catalog.find(p=>p.id===b.dataset.id);if(!p)return;try{const d=await call('stock_alert',{product_id:p.id,enabled:!p.alert_enabled});p.alert_enabled=d.enabled;render();notice(d.enabled?'Alerte demandée. Vous serez prévenu après activation du système de notifications.':'Alerte désactivée.')}catch(e){notice(e.message,true)}});
+ const chosen=catalog.filter(p=>(quantities[p.id]||0)>0);
+ const total=chosen.reduce((sum,p)=>sum+p.price_ht*quantities[p.id],0);
+ $('grand-total').textContent=euros(total);$('count').textContent=chosen.reduce((sum,p)=>sum+quantities[p.id],0)+' bouteille(s)';
+ $('submit').disabled=chosen.length===0;
+ $('submit').textContent=editing?'Enregistrer les modifications':'Envoyer ma demande de commande';
+ $('cancel-edit').classList.toggle('hide',!editing);
+ $('editing-note').classList.toggle('hide',!editing);
+ $('editing-note').textContent=editing?'Modification de la commande #'+editing.order_number+' (version '+editing.version+'). Les disponibilités et tarifs actuels seront revérifiés.':'';
+}
+async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();notice('Catalogue sécurisé chargé.');await getOrders();}
+async function getOrders(){try{const d=await call('orders');orders=d.orders;renderOrders()}catch(e){notice('Historique indisponible : '+e.message,true)}}
+function renderOrders(){
+ $('orders').innerHTML=orders.length?orders.map(o=>{
+ const canEdit=['received','review'].includes(o.status);
+ return '<div class="history"><div class="row"><b>Commande #'+safe(o.order_number)+'</b><span class="pill">'+safe(o.status==='review'?'À vérifier':o.status==='received'?'Reçue':o.status==='confirmed'?'Confirmée':o.status)+'</span></div><small>'+new Date(o.created_at).toLocaleDateString('fr-FR')+' · Traitement prévu '+safe(o.processing_date)+'</small>'+
+ (o.order_items||[]).map(i=>'<div class="historyline"><div>'+safe(i.product_name)+'<br><small>'+safe(i.quantity)+' × '+euros(i.unit_price_ht)+' HT</small></div><b>'+euros(i.line_total_ht)+'</b></div>').join('')+
+ '<div class="row"><b>Total HT</b><b>'+euros(o.total_ht)+'</b></div>'+
+ (canEdit?'<button class="outline tiny edit-order" data-order="'+safe(o.id)+'">Modifier cette commande</button>':'<p class="muted">Commande verrouillée après confirmation.</p>')+'</div>';
+ }).join(''):'<p>Aucune commande pour le moment.</p>';
+ document.querySelectorAll('.edit-order').forEach(b=>b.onclick=()=>{const o=orders.find(o=>o.id===b.dataset.order);if(!o)return;
+ const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const hour=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
+ if(day>o.processing_date||(day===o.processing_date&&hour>='12:30'))return notice('Cette commande est verrouillée par l’heure limite logistique de 12h30.',true);
+ editing=o;quantities={};(o.order_items||[]).forEach(x=>{if(catalog.some(p=>p.id===x.product_id))quantities[x.product_id]=x.quantity});tab('catalog');render();window.scrollTo({top:0,behavior:'smooth'});notice('Vous pouvez modifier les quantités puis enregistrer.');
+ });
+}
+$('cancel-edit').onclick=()=>{editing=null;quantities={};render();notice('Modification annulée.')};
+$('submit').onclick=async()=>{
+ const lines=catalog.filter(p=>quantities[p.id]>0).map(p=>({product_id:p.id,quantity:quantities[p.id]}));
+ if(!lines.length)return notice('Sélectionnez au moins une bouteille.',true);
+ if(!confirm((editing?'Modifier':'Envoyer')+' cette demande de '+lines.reduce((s,x)=>s+x.quantity,0)+' bouteille(s) ?\nTotal estimé '+euros(lines.reduce((s,x)=>s+x.quantity*Number(catalog.find(p=>p.id===x.product_id).price_ht),0))+' HT\nSous réserve de confirmation par Winess.'))return;
+ $('submit').disabled=true;
+ try{
+ const d=await call('submit_order',{lines,...(editing?{order_id:editing.id,version:editing.version}:{})});
+ editing=null;quantities={};render();await getOrders();tab('history');
+ notice('Demande #'+d.order.order_number+' enregistrée dans Winess PRO. Elle est à vérifier et doit être confirmée manuellement. L’envoi e-mail au commercial n’est pas encore activé.');
+ }catch(e){notice('Commande non enregistrée : '+e.message,true)}finally{$('submit').disabled=false}
+};
+$('reload-orders').onclick=getOrders;
+$('logout').onclick=()=>{localStorage.removeItem(key);session='';location.reload()};
+$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;localStorage.setItem(key,session);$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
+if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
+</script></body></html>
