@@ -43,7 +43,7 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 .full{width:100%}
 .history{border:1px solid #e1e8e0;border-radius:12px;padding:14px;margin:12px 0}
 .historyline{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
-.bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}.reviewrow{padding:16px 0;border-bottom:1px solid #e4ece6}.reviewrow:last-child{border-bottom:0}.reviewstep{display:flex;gap:10px;justify-content:flex-end;align-items:center}.reviewqty{width:76px;min-width:76px;text-align:center;padding:8px}.reviewfooter{position:sticky;bottom:0;background:#fff;padding:15px 0;border-top:2px solid #d6e5d9}.reviewtotal{font-size:24px;font-weight:800}.reviewactions{display:flex;gap:10px;margin-top:14px}.reviewactions>*{flex:1}.reviewnote{white-space:pre-wrap;background:#f3f6f2;padding:11px;border-radius:9px;color:#52675a;font-size:13px}
+.bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}.new-banner{background:linear-gradient(120deg,#133c2b,#295b45);color:#fff;border-radius:16px;padding:20px;margin:16px 0;display:flex;align-items:center;gap:15px;justify-content:space-between}.new-banner p{color:#e4f0e8;margin:5px 0}.new-banner button{background:#fff;color:#194c36;white-space:nowrap}.new-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:13px;margin-top:16px}.new-card{border:1px solid #d5e7d9;background:#fbfdfa;border-radius:13px;padding:15px}.new-card img{width:56px;height:78px;object-fit:contain;display:block;margin-bottom:10px}.new-tag{display:inline-block;background:#e4f1e7;color:#1d633b;font-size:11px;font-weight:800;padding:5px 9px;border-radius:30px;margin-bottom:8px}.reviewrow{padding:16px 0;border-bottom:1px solid #e4ece6}.reviewrow:last-child{border-bottom:0}.reviewstep{display:flex;gap:10px;justify-content:flex-end;align-items:center}.reviewqty{width:76px;min-width:76px;text-align:center;padding:8px}.reviewfooter{position:sticky;bottom:0;background:#fff;padding:15px 0;border-top:2px solid #d6e5d9}.reviewtotal{font-size:24px;font-weight:800}.reviewactions{display:flex;gap:10px;margin-top:14px}.reviewactions>*{flex:1}.reviewnote{white-space:pre-wrap;background:#f3f6f2;padding:11px;border-radius:9px;color:#52675a;font-size:13px}
 @media(max-width:520px){.shell{padding:17px 12px 80px}.card{padding:17px}.product{grid-template-columns:67px minmax(0,1fr);gap:11px}.photo,.photo-empty{width:67px;height:99px}.row.wrap{align-items:flex-start}}
 .filters{display:flex;gap:7px;overflow-x:auto;padding:12px 0}.filter{flex-shrink:0;background:#e8eee8;color:#315040;padding:9px 14px;border-radius:30px}.filter.selected{background:#1b4937;color:#fff}.msgentry{border-bottom:1px solid #e7ede7;padding:12px 0}.popwrap{position:fixed;inset:0;background:#0e2119a8;display:flex;align-items:center;justify-content:center;padding:18px;z-index:100}.pop{width:min(100%,430px);padding:26px;border-radius:19px;background:#fff;text-align:center;box-shadow:0 20px 55px #0003}.pop button{margin-top:20px}.remember{display:flex;align-items:center;gap:10px;margin:15px 0;font-size:14px}.remember input{width:18px;height:18px;accent-color:#1b4937}</style></head><body>
 <div class="shell">
@@ -51,7 +51,9 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 <section id="login" class="card"><h2>Accès à votre espace</h2><p>Entrez votre code personnel Winess. La connexion est conservée jusqu'à 30 jours sur cet appareil.</p><label for="code">Code d'accès</label><input id="code" type="password" minlength="4" autocomplete="off" placeholder="Votre code personnel"><label class="remember"><input id="remember" type="checkbox" checked> Mémoriser ma connexion pendant 30 jours</label><button id="enter" class="full" style="margin-top:14px">Accéder à mon catalogue</button></section>
 <div id="app" class="hide">
 <div class="row wrap"><div><small>BIENVENUE</small><h2 id="client-name"></h2></div><span class="pill">Espace privé</span></div>
-<div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="history">Mes commandes</button><button data-tab="messages">Notifications <span id="unread-count"></span></button></div>
+<div id="new-banner" class="new-banner hide"><div><strong>✨ NOUVEAUTÉS WINESS</strong><p id="new-banner-text">Découvrez les nouvelles références choisies pour vous.</p></div><button id="new-banner-open">Découvrir</button></div>
+<div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="new">Nouveautés <span id="new-count"></span></button><button data-tab="history">Mes commandes</button><button data-tab="messages">Notifications <span id="unread-count"></span></button></div>
+<section id="new" class="card hide"><div class="row wrap"><div><span class="new-tag">SÉLECTION EXCLUSIVE</span><h2>Vos nouveautés</h2></div><button class="outline tiny" id="new-back">Retour au catalogue</button></div><p>De nouvelles références choisies pour votre établissement. Sélectionnez une quantité pour les ajouter à votre commande.</p><div id="new-products" class="new-grid"></div><div class="total"><span>Total de votre panier HT</span><strong id="new-total">0,00 €</strong></div><button id="new-checkout" class="full" style="margin-top:14px">Voir mon panier et commander</button></section>
 <section id="catalog" class="card"><div id="catalog-edit"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
 <div class="banner">Les stocks WineSitting ne sont pas encore synchronisés. Toute commande reste une demande soumise à confirmation par Winess. Une quantité n'est jamais garantie avant validation logistique.</div>
 <div id="filters" class="filters"></div><div id="products"></div>
@@ -80,7 +82,7 @@ const $=id=>document.getElementById(id);
 const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
-let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;
+let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
 async function call(action,more={}){
  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
  let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
@@ -89,9 +91,27 @@ async function call(action,more={}){
 }
 function tab(id){
  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
- ['catalog','history','messages'].forEach(t=>$(t).classList.toggle('hide',t!==id));if(id==='messages')getMessages();
+ ['catalog','new','history','messages'].forEach(t=>$(t).classList.toggle('hide',t!==id));if(id==='messages')getMessages();
 }
-document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);if(b.dataset.tab==='history')getOrders()});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab);if(b.dataset.tab==='history')getOrders();if(b.dataset.tab==='new')renderNew()});
+$('new-banner-open').onclick=()=>{tab('new');renderNew()};
+$('new-back').onclick=()=>tab('catalog');
+$('new-checkout').onclick=()=>{tab('catalog');showReview()};
+function renderNew(){
+ const newProducts=catalog.filter(p=>p.is_new);
+ $('new-banner').classList.toggle('hide',!newProducts.length);
+ $('new-count').textContent=newProducts.length?'('+newProducts.length+')':'';
+ $('new-banner-text').textContent=newProducts.length+' nouvelle'+(newProducts.length>1?'s':'')+' référence'+(newProducts.length>1?'s':'')+' sélectionnée'+(newProducts.length>1?'s':'')+' pour vous';
+ $('new-products').innerHTML=newProducts.length?newProducts.map(p=>{
+ const qty=quantities[p.id]||0,limit=p.out_of_stock?0:Math.min(60,p.max_quantity||60);
+ return '<div class="new-card">'+(p.photo?'<img src="'+safe(p.photo)+'" alt="'+safe(p.name)+'">':'')+'<span class="new-tag">NOUVEAUTÉ</span><div class="name">'+safe(p.name)+'</div><small>'+safe(p.category||'')+'</small><p class="price">'+euros(p.price_ht)+' HT</p><p class="stock">'+safe(p.stock_display||'Stock à confirmer')+'</p>'+(p.out_of_stock?'<button class="outline tiny new-alert" data-id="'+safe(p.id)+'">M’alerter du retour</button>':'<div class="stepper"><button data-new="minus" data-id="'+safe(p.id)+'" '+(qty===0?'disabled':'')+'>−</button><strong>'+qty+'</strong><button data-new="plus" data-id="'+safe(p.id)+'" '+(qty>=limit?'disabled':'')+'>+</button></div>')+'</div>'
+ }).join(''):'<p>Aucune nouveauté actuellement pour votre établissement.</p>';
+ document.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{const p=catalog.find(x=>x.id===b.dataset.id);if(!p)return;quantities[p.id]=Math.max(0,Math.min(Math.min(60,p.max_quantity||60),(quantities[p.id]||0)+(b.dataset.new==='plus'?1:-1)));renderNew();render()});
+ document.querySelectorAll('.new-alert').forEach(b=>b.onclick=async()=>{const p=catalog.find(x=>x.id===b.dataset.id);if(!p)return;try{const d=await call('stock_alert',{product_id:p.id,enabled:!p.alert_enabled});p.alert_enabled=d.enabled;renderNew();notice(d.enabled?'Alerte de retour en stock activée dans votre compte.':'Alerte désactivée.')}catch(e){notice(e.message,true)}});
+ $('new-total').textContent=euros(catalog.reduce((total,p)=>total+(quantities[p.id]||0)*Number(p.price_ht),0));
+ $('new-checkout').disabled=!catalog.some(p=>quantities[p.id]>0);
+}
+
 function render(){
  const categories=['Tous',...new Set(catalog.map(p=>p.category||'Autres'))];
  if(!categories.includes(filter))filter='Tous';
@@ -132,11 +152,11 @@ async function refreshClientStock(){
    const maximum=item.out_of_stock?0:Math.min(60,item.max_quantity||60);
    if(qty>maximum){quantities[id]=maximum;notice('Stock mis à jour : la quantité du panier a été ajustée pour '+item.name+'.',true)}
   }
-  if(reviewing)renderReview();else render();
+  if(reviewing)renderReview();else render();renderNew();
  }catch(e){console.warn('Stock actualisation:',e.message)}
 }
-async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();}
-function openPopup(title,body,orderId=null){popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
+async function load(){const d=await call('catalogue');catalog=d.products; $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();renderNew();if(wantNew){tab('new');renderNew()}notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();}
+function openPopup(title,body,orderId=null){$('popup-view').textContent='Voir ma commande';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
 $('popup-close').onclick=()=>$('popup').classList.add('hide');
 $('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};
 function messageDate(value){
@@ -159,8 +179,10 @@ function messageDetails(m){
 async function getMessages(){
  try{const d=await call('messages');const previous=new Set(messages.map(m=>m.id));messages=d.messages||[];
  $('unread-count').textContent=messages.filter(m=>!m.read_at).length||'';
- $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(messageHeading(m))+'</b><p style="white-space:pre-line">'+safe(messageDetails(m))+'</p><small>'+safe(messageDate(m.created_at))+'</small><div style="margin-top:10px"><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">Voir la commande</button></div></div>').join(''):'<p>Pas de notification pour le moment.</p>';
- document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
+ $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(messageHeading(m))+'</b><p style="white-space:pre-line">'+safe(messageDetails(m))+'</p><small>'+safe(messageDate(m.created_at))+'</small><div style="margin-top:10px"><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">'+(m.kind==='new_product'?'Découvrir les nouveautés':'Voir la commande')+'</button></div></div>').join(''):'<p>Pas de notification pour le moment.</p>';
+ document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();const selected=messages.find(x=>x.id===b.dataset.id);if(selected?.kind==='new_product'){tab('new');renderNew();return}if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
+ const newest=messages.find(m=>m.kind==='new_product'&&!m.read_at&&!shownNewNotifications.has(m.id));
+ if(newest){shownNewNotifications.add(newest.id);openPopup(newest.title,newest.body,null);$('popup-view').classList.remove('hide');$('popup-view').textContent='Découvrir les nouveautés';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('new');renderNew();call('read_message',{message_id:newest.id}).then(getMessages).catch(()=>{})}}
  if(messages.some(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
  }catch(e){notice('Notifications indisponibles : '+e.message,true)}
 }
