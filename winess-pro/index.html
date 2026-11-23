@@ -136,7 +136,7 @@ $('cancel-product').onclick=()=>{editingProductId=null;['product-name','product-
  if(!selectedClient)return status('Sélectionne d’abord un établissement client.',true);
  if(!selectedProduct)return status('Sélectionne la référence à attribuer.',true);
  if(!selectedProduct.active)return status('Cette référence doit être réactivée avant attribution.',true);
- if(!raw||!Number.isFinite(price_ht)||price_ht<0||Math.round(price_ht*100)!==price_ht*100)return status('Saisis un prix HT valide (2 décimales maximum).',true);
+ if(!/^\\d+(?:\\.\\d{1,2})?$/.test(raw)||!Number.isFinite(price_ht)||price_ht<0)return status('Saisis un prix HT valide (2 décimales maximum).',true);
  const prior=assign.find(a=>a.client_id===client_id&&a.product_id===product_id);
  button.disabled=true;button.textContent='Enregistrement en cours…';
  $('assign-feedback').textContent='Enregistrement de '+selectedProduct.name+' pour '+selectedClient.name+'…';
