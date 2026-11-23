@@ -22,7 +22,7 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 .banner{padding:13px;background:#f0f4ef;border:1px solid #dde8dc;border-radius:12px;color:#456050;font-size:13px;line-height:1.5}
 .notice{padding:12px 14px;border-radius:10px;background:#e8f3e8;color:#234931;white-space:pre-wrap;margin:10px 0;font-size:13px}
 .notice.error{background:#fff1eb;color:#9e3e2d}
-.tabs{display:flex;gap:8px;margin:16px 0}
+.tabs{display:flex;gap:8px;margin:16px 0;overflow-x:auto;scrollbar-width:none}.tabs button{flex:0 0 auto;white-space:nowrap;min-width:105px}
 .tabs button{flex:1;background:#e8eee8;color:#315040}
 .tabs button.active{background:#1b4937;color:white}
 .product{display:grid;grid-template-columns:80px minmax(0,1fr);gap:16px;padding:20px 0;border-bottom:1px solid #e9eeea}
@@ -222,7 +222,7 @@ async function getMessages(){
  $('messages-list').innerHTML=messages.length?messages.map(m=>'<div class="msgentry"><b>'+safe(messageHeading(m))+'</b><p style="white-space:pre-line">'+safe(messageDetails(m))+'</p><small>'+safe(messageDate(m.created_at))+'</small><div style="margin-top:10px"><button class="outline tiny read-message" data-id="'+safe(m.id)+'" data-order="'+safe(m.order_id||'')+'">'+(m.kind==='new_product'?'Découvrir les nouveautés':'Voir la commande')+'</button></div></div>').join(''):'<p>Pas de notification pour le moment.</p>';
  document.querySelectorAll('.read-message').forEach(b=>b.onclick=async()=>{try{await call('read_message',{message_id:b.dataset.id});await getMessages();const selected=messages.find(x=>x.id===b.dataset.id);if(selected?.kind==='new_product'){tab('new');renderNew();return}if(b.dataset.order){tab('history');await getOrders();const el=document.querySelector('[data-order-container="'+b.dataset.order+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'})}}catch(e){notice(e.message,true)}});
  const newest=messages.find(m=>m.kind==='new_product'&&!m.read_at&&!shownNewNotifications.has(m.id));
- if(newest){shownNewNotifications.add(newest.id);openPopup(newest.title,newest.body,null);$('popup-view').classList.remove('hide');$('popup-view').textContent='Découvrir les nouveautés';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('new');renderNew();call('read_message',{message_id:newest.id}).then(getMessages).catch(()=>{})}}
+ if(newest){shownNewNotifications.add(newest.id);await refreshClientStock();openPopup(newest.title,newest.body,null);$('popup-view').classList.remove('hide');$('popup-view').textContent='Découvrir les nouveautés';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('new');renderNew();call('read_message',{message_id:newest.id}).then(getMessages).catch(()=>{})}}
  if(messages.some(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed')){const m=messages.find(m=>!previous.has(m.id)&&!m.read_at&&m.kind==='order_confirmed');openPopup(m.title,m.body,m.order_id)}
  }catch(e){notice('Notifications indisponibles : '+e.message,true)}
 }
