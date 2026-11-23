@@ -146,9 +146,11 @@ const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'E
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
 let session='',catalog=[],quantities={},newQuantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false,newAccepting=false;let pushConfig=null;const wantNew=new URLSearchParams(location.search).get('nouveautes')==='1';let shownNewNotifications=new Set();
 async function call(action,more={}){
- const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
- let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
- if(!r.ok)throw Error(d.error||'Une erreur serveur est survenue');
+ let r;
+ try{r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})})}
+ catch(e){throw Error('Connexion réseau impossible. Vérifiez votre connexion Internet puis réessayez.')}
+ let d;try{d=await r.json()}catch(e){throw Error('Réponse serveur temporairement indisponible (HTTP '+r.status+'). Réessayez.')}
+ if(!r.ok)throw Error(d.error||'Erreur serveur HTTP '+r.status);
  return d;
 }
 function tab(id){
@@ -245,7 +247,7 @@ async function refreshClientStock(){
   if(reviewing)renderReview();else render();renderNew();
  }catch(e){console.warn('Stock actualisation:',e.message)}
 }
-async function load(){const d=await call('catalogue');catalog=d.products;localStorage.setItem('winesspro_last_slug',slug); $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();renderNew();if(wantNew){tab('new');renderNew()}notice('Catalogue sécurisé chargé.');await getOrders();await getMessages();await updatePushConfig();}
+async function load(){const d=await call('catalogue');catalog=d.products;localStorage.setItem('winesspro_last_slug',slug); $('client-name').textContent=d.client;$('login').classList.add('hide');$('app').classList.remove('hide');$('logout').classList.remove('hide');render();renderNew();if(wantNew){tab('new');renderNew()}notice('Catalogue sécurisé chargé.');Promise.allSettled([getOrders(),getMessages(),updatePushConfig()]).then(results=>{const failed=results.filter(x=>x.status==='rejected');if(failed.length)console.warn('Services complémentaires indisponibles',failed.map(x=>x.reason?.message))});}
 function openPopup(title,body,orderId=null){$('popup-view').textContent='Voir ma commande';$('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};popupOrder=orderId;$('popup-title').textContent=title;$('popup-body').textContent=body;$('popup').classList.remove('hide');$('popup-view').classList.toggle('hide',!orderId)}
 $('popup-close').onclick=()=>$('popup').classList.add('hide');
 $('popup-view').onclick=()=>{$('popup').classList.add('hide');tab('history');getOrders();setTimeout(()=>{const o=popupOrder&&document.querySelector('[data-order-container="'+popupOrder+'"]');if(o)o.scrollIntoView({behavior:'smooth',block:'center'})},100)};
@@ -413,9 +415,10 @@ $('review-send').onclick=async()=>{
 };
 $('reload-orders').onclick=async()=>{await getOrders();await getMessages()};
 $('logout').onclick=()=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';location.reload()};
-$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;try{const d=await call('login',{slug,code});session=d.session;if($('remember').checked){localStorage.setItem(key,session);sessionStorage.removeItem(key)}else{sessionStorage.setItem(key,session);localStorage.removeItem(key)}$('code').value='';await load()}catch(e){notice(e.message,true)}finally{$('enter').disabled=false}};
+$('enter').onclick=async()=>{const code=$('code').value.trim();if(code.length<4)return notice('Le code doit contenir au moins 4 caractères.',true);$('enter').disabled=true;notice('Vérification du code en cours…');try{const d=await call('login',{slug,code});session=d.session;try{if($('remember').checked){localStorage.setItem(key,session);sessionStorage.removeItem(key)}else{sessionStorage.setItem(key,session);localStorage.removeItem(key)}}catch(storageError){console.warn('Stockage iPhone indisponible',storageError)}$('code').value='';try{await load()}catch(e){notice('Code accepté, mais le catalogue ne se charge pas : '+e.message,true)}}catch(e){notice('Connexion NOOBA : '+e.message,true)}finally{$('enter').disabled=false}};
+$('code').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('enter').click()}});
 setInterval(()=>{if(session&&document.visibilityState==='visible')getMessages()},45000);
 setInterval(()=>{if(session&&document.visibilityState==='visible')refreshClientStock()},120000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&session)refreshClientStock()});
-if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key)||sessionStorage.getItem(key);if(saved){session=saved;load().catch(e=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';notice('Votre session a expiré. Saisissez votre code. '+e.message,true)})}}
+if(!/^[a-z0-9-]{2,50}$/.test(slug)){notice('Ce lien client est invalide. Demandez votre lien à Winess.',true);$('enter').disabled=true}else{const saved=localStorage.getItem(key)||sessionStorage.getItem(key);if(saved){session=saved;load().catch(e=>{if(/Session expirée|Connexion nécessaire|Accès refusé/i.test(e.message)){localStorage.removeItem(key);sessionStorage.removeItem(key);session='';notice('Session expirée. Saisissez votre code pour vous reconnecter.',true)}else{notice('Session conservée, mais le catalogue est momentanément indisponible : '+e.message,true)}})}}
 </script></body></html>
