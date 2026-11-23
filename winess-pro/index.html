@@ -51,17 +51,30 @@ document.querySelectorAll('.confirm-order').forEach(b=>b.onclick=async()=>{const
  renderProductOptions();
  $('assign-product').value=p.id;
  $('assign-product').dispatchEvent(new Event('change'));
- const assigned=assign.find(a=>a.client_id===$('assign-client').value&&a.product_id===p.id);
- $('assign-price').value=assigned?Number(assigned.price_ht).toFixed(2):p.default_price_ht!=null?Number(p.default_price_ht).toFixed(2):'';
- $('assign-feedback').textContent='Référence sélectionnée : '+p.name+'. Choisis le client et le tarif HT puis clique sur « Attribuer / mettre à jour ».';
+ syncAssignmentSelection(true);
  $('assign-price').focus();
  status('Produit prêt à être attribué : '+p.name+'.');
+}
+function syncAssignmentSelection(force=false){
+ const client_id=$('assign-client').value,product_id=$('assign-product').value;
+ const selection=client_id+'|'+product_id;
+ if(!force&&$('assign-price').dataset.selection===selection)return;
+ $('assign-price').dataset.selection=selection;
+ const p=products.find(x=>x.id===product_id),c=clients.find(x=>x.id===client_id);
+ const assigned=assign.find(a=>a.client_id===client_id&&a.product_id===product_id);
+ const suggested=assigned?assigned.price_ht:p?.default_price_ht;
+ $('assign-price').value=suggested==null?'':Number(suggested).toFixed(2);
+ $('assign-feedback').textContent=p&&c?
+ (assigned?'Référence déjà attribuée à '+c.name+' : '+p.name+'. Prix HT actuel : '+Number(assigned.price_ht).toFixed(2)+' €. Modifie-le si nécessaire.':
+ 'Nouvelle attribution à '+c.name+' : '+p.name+'. '+(suggested!=null?'Tarif Pro HT prérempli : '+Number(suggested).toFixed(2)+' €.':'Saisis son tarif Pro HT.')):
+ 'Sélectionne un établissement et une référence.';
 }
 function renderProductOptions(){
 const select=$('assign-product'),prev=select.value,q=$('assign-search').value.trim().toLowerCase();
 const list=products.slice().sort((a,b)=>Number(b.active)-Number(a.active)||a.name.localeCompare(b.name,'fr')).filter(p=>!q||[p.name,p.internal_ref,p.category].some(v=>String(v||'').toLowerCase().includes(q)));
 select.innerHTML=list.map(p=>'<option value="'+escape(p.id)+'">'+(p.active?'':'[DÉSACTIVÉ] ')+escape(p.name)+' · '+escape(p.category||'Autres')+'</option>').join('');
 if(list.some(p=>p.id===prev))select.value=prev;
+syncAssignmentSelection();
 $('products-count').textContent=products.filter(p=>p.active).length+' actives · '+products.filter(p=>!p.active).length+' désactivées';
 const current=products.find(p=>p.id===select.value);
 $('activate-assignment-product').classList.toggle('hide',!current||current.active);
@@ -69,12 +82,12 @@ $('save-price').disabled=!current||!current.active;
 if(current&&!current.active)status('La référence '+current.name+' est désactivée. Réactive-la avant de l’attribuer au client.');
 }
 $('assign-search').oninput=renderProductOptions;
-$('assign-product').onchange=()=>{const p=products.find(p=>p.id===$('assign-product').value);$('activate-assignment-product').classList.toggle('hide',!p||p.active);$('save-price').disabled=!p||!p.active};
+$('assign-product').onchange=()=>{const p=products.find(p=>p.id===$('assign-product').value);$('activate-assignment-product').classList.toggle('hide',!p||p.active);$('save-price').disabled=!p||!p.active;syncAssignmentSelection(true)};
 $('reload-products').onclick=async()=>{await refresh();status('Références actualisées depuis Supabase. Les produits désactivés sont également visibles.')};
 $('activate-assignment-product').onclick=async()=>{const p=products.find(p=>p.id===$('assign-product').value);if(!p||p.active)return;
 if(!confirm('Réactiver '+p.name+' dans le catalogue général pour pouvoir l’ajouter aux clients ?'))return;
 try{const resp=await db.from('products').update({active:true}).eq('id',p.id);if(resp.error)throw resp.error;await refresh();$('assign-product').value=p.id;renderProductOptions();status('Référence réactivée. Tu peux maintenant choisir son prix HT pour NOOBA.')}catch(e){status('Impossible de réactiver : '+e.message,true)}};
-function renderAssign(){const id=$('assign-client').value;$('assign-list').innerHTML=assign.filter(a=>a.client_id===id).map(a=>{const p=products.find(p=>p.id===a.product_id);return'<div class="item"><div><b>'+escape(p?.name||'Produit')+'</b> '+(a.is_new&&!a.catalog_accepted&&(!a.new_until||new Date(a.new_until)>new Date())?'<small style="color:#23734d;font-weight:700">NOUVEAUTÉ EN ATTENTE CLIENT</small>':a.catalog_accepted?'<small style="color:#23734d;font-weight:700">CATALOGUE ACCEPTÉ</small>':'<small style="color:#9c6949;font-weight:700">HORS CATALOGUE CLIENT</small>')+'<br><small>'+escape(p?.category||'')+'</small></div><div><span>'+Number(a.price_ht).toFixed(2)+' € HT</span> <button class="alt edit-assignment" data-product="'+escape(a.product_id)+'">Modifier le prix</button> <button class="alt new-assignment" data-product="'+escape(a.product_id)+'">'+(a.is_new&&(!a.new_until||new Date(a.new_until)>new Date())?'Retirer nouveauté':'Mettre en nouveauté')+'</button> '+(a.is_new&&(!a.new_until||new Date(a.new_until)>new Date())?'<button class="alt copy-new-link" data-product="'+escape(a.product_id)+'">Copier lien nouveautés</button>':'')+' <button class="danger remove-assignment" data-product="'+escape(a.product_id)+'">Retirer</button></div></div>'}).join('')||'<p>Aucune référence attribuée</p>';document.querySelectorAll('.edit-assignment').forEach(b=>b.onclick=()=>{const a=assign.find(a=>a.client_id===id&&a.product_id===b.dataset.product);if(!a)return;$('assign-product').value=a.product_id;$('assign-price').value=Number(a.price_ht).toFixed(2);$('assign-price').focus();status('Modifie le tarif HT, puis clique sur Attribuer / mettre à jour.');});document.querySelectorAll('.copy-new-link').forEach(b=>b.onclick=async()=>{
+function renderAssign(){const id=$('assign-client').value;$('assign-list').innerHTML=assign.filter(a=>a.client_id===id).map(a=>{const p=products.find(p=>p.id===a.product_id);return'<div class="item"><div><b>'+escape(p?.name||'Produit')+'</b> '+(a.is_new&&!a.catalog_accepted&&(!a.new_until||new Date(a.new_until)>new Date())?'<small style="color:#23734d;font-weight:700">NOUVEAUTÉ EN ATTENTE CLIENT</small>':a.catalog_accepted?'<small style="color:#23734d;font-weight:700">CATALOGUE ACCEPTÉ</small>':'<small style="color:#9c6949;font-weight:700">HORS CATALOGUE CLIENT</small>')+'<br><small>'+escape(p?.category||'')+'</small></div><div><span>'+Number(a.price_ht).toFixed(2)+' € HT</span> <button class="alt edit-assignment" data-product="'+escape(a.product_id)+'">Modifier le prix</button> <button class="alt new-assignment" data-product="'+escape(a.product_id)+'">'+(a.is_new&&(!a.new_until||new Date(a.new_until)>new Date())?'Retirer nouveauté':'Mettre en nouveauté')+'</button> '+(a.is_new&&(!a.new_until||new Date(a.new_until)>new Date())?'<button class="alt copy-new-link" data-product="'+escape(a.product_id)+'">Copier lien nouveautés</button>':'')+' <button class="danger remove-assignment" data-product="'+escape(a.product_id)+'">Retirer</button></div></div>'}).join('')||'<p>Aucune référence attribuée</p>';document.querySelectorAll('.edit-assignment').forEach(b=>b.onclick=()=>{const a=assign.find(a=>a.client_id===id&&a.product_id===b.dataset.product);if(!a)return;$('assign-product').value=a.product_id;$('assign-price').value=Number(a.price_ht).toFixed(2);$('assign-price').dataset.selection=id+'|'+a.product_id;$('assign-price').focus();status('Modifie le tarif HT, puis clique sur Attribuer / mettre à jour.');});document.querySelectorAll('.copy-new-link').forEach(b=>b.onclick=async()=>{
  const c=clients.find(c=>c.id===id);if(!c)return;
  const link=clientBase+encodeURIComponent(c.slug)+'&nouveautes=1';
  try{await navigator.clipboard.writeText(link);status('Lien nouveautés copié pour '+c.name+'. Tu peux aussi le transmettre par WhatsApp.')}catch(e){prompt('Copie le lien nouveautés :',link)}
@@ -110,7 +123,7 @@ $('retry-order-emails').onclick=async()=>{
   const blocked=(data.results||[]).filter(x=>x.state==='configuration_required').length;
   status(sent+' e-mail(s) accepté(s) par le fournisseur. '+(blocked?blocked+' en attente : renseigne RESEND_API_KEY et WINESS_EMAIL_FROM dans Supabase.':'')+(data.results?.length===0?' Aucun e-mail en attente.':''));
  }catch(e){status('Envoi non effectué : '+e.message,true)}finally{button.disabled=false}
-};$('assign-client').onchange=renderAssign;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));['clients','products','assign','orders'].forEach(id=>$(id).classList.toggle('hide',id!==b.dataset.tab))});async function write(table,record,upsert=false){try{const r=upsert?await db.from(table).upsert(record,{onConflict:'client_id,product_id'}):await db.from(table).insert(record);if(r.error)throw r.error;status('Enregistré dans Supabase.');await refresh()}catch(e){status('Enregistrement impossible : '+e.message,true)}}$('add-client').onclick=()=>{const name=$('client-name').value.trim(),slug=$('client-slug').value.trim().toLowerCase();if(!name||!/^[a-z0-9-]{2,50}$/.test(slug))return status('Nom et identifiant client obligatoires (lettres, chiffres ou tirets).',true);write('clients',{name,slug,contact_email:$('client-email').value.trim()||null})};
+};$('assign-client').onchange=()=>{renderAssign();syncAssignmentSelection(true)};document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));['clients','products','assign','orders'].forEach(id=>$(id).classList.toggle('hide',id!==b.dataset.tab))});async function write(table,record,upsert=false){try{const r=upsert?await db.from(table).upsert(record,{onConflict:'client_id,product_id'}):await db.from(table).insert(record);if(r.error)throw r.error;status('Enregistré dans Supabase.');await refresh()}catch(e){status('Enregistrement impossible : '+e.message,true)}}$('add-client').onclick=()=>{const name=$('client-name').value.trim(),slug=$('client-slug').value.trim().toLowerCase();if(!name||!/^[a-z0-9-]{2,50}$/.test(slug))return status('Nom et identifiant client obligatoires (lettres, chiffres ou tirets).',true);write('clients',{name,slug,contact_email:$('client-email').value.trim()||null})};
 const stockApi='https://azjiryszenzwkwnnnsar.supabase.co/functions/v1/winess-stock-sync';
 async function stockAction(action){
  const {data:{session}}=await db.auth.getSession();
@@ -296,7 +309,7 @@ $('save-price').onclick=async()=>{
  if(!selectedClient)return status('Sélectionne d’abord un établissement client.',true);
  if(!selectedProduct)return status('Sélectionne la référence à attribuer.',true);
  if(!selectedProduct.active)return status('Cette référence doit être réactivée avant attribution.',true);
- if(!/^\\d+(?:\\.\\d{1,2})?$/.test(raw)||!Number.isFinite(price_ht)||price_ht<0)return status('Saisis un prix HT valide (2 décimales maximum).',true);
+ if(!/^\d+(?:\.\d{1,2})?$/.test(raw)||!Number.isFinite(price_ht)||price_ht<0){const msg='Prix HT invalide : indique par exemple 13,95 ou 13.95 €.';$('assign-feedback').textContent=msg;status(msg,true);return}
  const prior=assign.find(a=>a.client_id===client_id&&a.product_id===product_id);
  button.disabled=true;button.textContent='Enregistrement en cours…';
  $('assign-feedback').textContent='Enregistrement de '+selectedProduct.name+' pour '+selectedClient.name+'…';
@@ -316,6 +329,7 @@ $('save-price').onclick=async()=>{
   renderProductOptions();
   $('assign-product').value=product_id;
   $('assign-price').value=value.toFixed(2);
+  $('assign-price').dataset.selection=client_id+'|'+product_id;
   renderAssign();
   const msg=(prior?'Tarif mis à jour':'Référence attribuée')+' : '+selectedProduct.name+' → '+selectedClient.name+' · '+value.toFixed(2)+' € HT.';
   $('assign-feedback').textContent='✓ '+msg;
