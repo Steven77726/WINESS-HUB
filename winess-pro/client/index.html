@@ -43,7 +43,7 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 .full{width:100%}
 .history{border:1px solid #e1e8e0;border-radius:12px;padding:14px;margin:12px 0}
 .historyline{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px}
-.bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}
+.bttm{position:sticky;bottom:0;background:#f4f6f3eD;backdrop-filter:blur(8px);padding:10px 0}.reviewrow{padding:16px 0;border-bottom:1px solid #e4ece6}.reviewrow:last-child{border-bottom:0}.reviewstep{display:flex;gap:10px;justify-content:flex-end;align-items:center}.reviewqty{width:76px;min-width:76px;text-align:center;padding:8px}.reviewfooter{position:sticky;bottom:0;background:#fff;padding:15px 0;border-top:2px solid #d6e5d9}.reviewtotal{font-size:24px;font-weight:800}.reviewactions{display:flex;gap:10px;margin-top:14px}.reviewactions>*{flex:1}.reviewnote{white-space:pre-wrap;background:#f3f6f2;padding:11px;border-radius:9px;color:#52675a;font-size:13px}
 @media(max-width:520px){.shell{padding:17px 12px 80px}.card{padding:17px}.product{grid-template-columns:67px minmax(0,1fr);gap:11px}.photo,.photo-empty{width:67px;height:99px}.row.wrap{align-items:flex-start}}
 .filters{display:flex;gap:7px;overflow-x:auto;padding:12px 0}.filter{flex-shrink:0;background:#e8eee8;color:#315040;padding:9px 14px;border-radius:30px}.filter.selected{background:#1b4937;color:#fff}.msgentry{border-bottom:1px solid #e7ede7;padding:12px 0}.popwrap{position:fixed;inset:0;background:#0e2119a8;display:flex;align-items:center;justify-content:center;padding:18px;z-index:100}.pop{width:min(100%,430px);padding:26px;border-radius:19px;background:#fff;text-align:center;box-shadow:0 20px 55px #0003}.pop button{margin-top:20px}.remember{display:flex;align-items:center;gap:10px;margin:15px 0;font-size:14px}.remember input{width:18px;height:18px;accent-color:#1b4937}</style></head><body>
 <div class="shell">
@@ -52,13 +52,21 @@ input::placeholder,textarea::placeholder{color:#94a599}textarea{background:white
 <div id="app" class="hide">
 <div class="row wrap"><div><small>BIENVENUE</small><h2 id="client-name"></h2></div><span class="pill">Espace privé</span></div>
 <div class="tabs"><button class="active" data-tab="catalog">Mon catalogue</button><button data-tab="history">Mes commandes</button><button data-tab="messages">Notifications <span id="unread-count"></span></button></div>
-<section id="catalog" class="card"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
+<section id="catalog" class="card"><div id="catalog-edit"><h3>Vos références habituelles</h3><p>Choisissez les quantités. Prix professionnels en euros HT.</p>
 <div class="banner">Les stocks WineSitting ne sont pas encore synchronisés. Toute commande reste une demande soumise à confirmation par Winess. Une quantité n'est jamais garantie avant validation logistique.</div>
 <div id="filters" class="filters"></div><div id="products"></div>
 <div class="total"><span>TOTAL COMMANDE HT</span><strong id="grand-total">0,00 €</strong></div><p id="count" class="muted">0 bouteille</p>
 <div id="editing-note" class="banner hide"></div><label for="order-comment" style="display:block;margin-top:15px;font-weight:700;font-size:14px">Commentaire pour Winess (facultatif)</label><textarea id="order-comment" maxlength="1000" placeholder="Ex. Livraison mercredi matin, merci de nous appeler avant le passage du livreur."></textarea><small>Votre commentaire accompagnera la commande.</small>
-<div class="row" style="margin-top:12px"><button class="full" id="submit">Envoyer ma demande de commande</button><button id="cancel-edit" class="outline hide">Annuler</button></div>
-<small>Le traitement logistique est soumis aux horaires Winess. Une modification est possible uniquement avant confirmation, et avant 12h30 le jour du traitement.</small>
+<div class="row" style="margin-top:12px"><button class="full" id="submit">Voir le récapitulatif</button><button id="cancel-edit" class="outline hide">Annuler</button></div>
+<small>Le traitement logistique est soumis aux horaires Winess. Une modification est possible uniquement avant confirmation, et avant 12h30 le jour du traitement.</small></div>
+<div id="order-review" class="hide">
+<div class="pill" style="display:inline-block;margin-bottom:10px">ÉTAPE 2 SUR 2</div><h2>Vérifiez votre commande</h2>
+<p>Contrôlez vos références, corrigez les quantités et vérifiez le total HT avant l'envoi.</p>
+<div id="review-lines"></div>
+<div class="reviewfooter"><div class="row"><b id="review-count"></b><div style="text-align:right"><small>TOTAL HT</small><div class="reviewtotal" id="review-total"></div></div></div>
+<div class="banner" style="margin-top:10px">Commande soumise à la confirmation des quantités par Winess. Aucun stock n'est garanti avant validation.</div>
+<div class="reviewactions"><button class="outline" id="review-back">Modifier mon panier</button><button id="review-send">Confirmer et envoyer ma commande</button></div></div>
+</div>
 </section>
 <section id="messages" class="card hide"><h3>Mes notifications</h3><div id="messages-list"></div></section><section id="history" class="card hide"><h3>Historique de vos commandes</h3><p>Retrouvez toutes vos demandes, prix HT et modifications.</p><button class="outline tiny" id="reload-orders">Actualiser</button><div id="orders"></div></section>
 </div>
@@ -72,7 +80,7 @@ const $=id=>document.getElementById(id);
 const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const euros=n=>Number(n||0).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});
 const notice=(msg,err=false)=>{$('notice').className='notice'+(err?' error':'');$('notice').textContent=msg};
-let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null;
+let session='',catalog=[],quantities={},orders=[],messages=[],editing=null,filter='Tous',popupOrder=null,reviewing=false,sending=false;
 async function call(action,more={}){
  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,session,...more})});
  let d;try{d=await r.json()}catch(e){throw Error('Réponse du serveur illisible')}
@@ -105,7 +113,7 @@ function render(){
  const total=chosen.reduce((sum,p)=>sum+p.price_ht*quantities[p.id],0);
  $('grand-total').textContent=euros(total);$('count').textContent=chosen.reduce((sum,p)=>sum+quantities[p.id],0)+' bouteille(s)';
  $('submit').disabled=chosen.length===0;
- $('submit').textContent=editing?'Enregistrer les modifications':'Envoyer ma demande de commande';
+ $('submit').textContent=editing?'Vérifier les modifications':'Voir le récapitulatif';
  $('cancel-edit').classList.toggle('hide',!editing);
  $('editing-note').classList.toggle('hide',!editing);
  $('editing-note').textContent=editing?'Modification de la commande #'+editing.order_number+' (version '+editing.version+'). Les disponibilités et tarifs actuels seront revérifiés.':'';
@@ -140,16 +148,59 @@ function renderOrders(){
  });
 }
 $('cancel-edit').onclick=()=>{editing=null;quantities={};$('order-comment').value='';render();notice('Modification annulée.')};
-$('submit').onclick=async()=>{
+function showReview(){
+ const chosen=catalog.filter(p=>quantities[p.id]>0);
+ if(!chosen.length){reviewing=false;return notice('Ajoutez au moins une bouteille pour continuer.',true)}
+ reviewing=true;$('catalog-edit').classList.add('hide');$('order-review').classList.remove('hide');
+ renderReview();$('order-review').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function renderReview(){
+ const chosen=catalog.filter(p=>quantities[p.id]>0);
+ $('review-lines').innerHTML=chosen.length?chosen.map(p=>{
+ const qty=quantities[p.id],max=Math.min(60,p.max_quantity||60);
+ return '<div class="reviewrow"><div class="row wrap"><div style="flex:1;min-width:160px"><b>'+safe(p.name)+'</b><br><small>'+safe(p.category||'')+' · '+euros(p.price_ht)+' HT par bouteille</small></div><b>'+euros(qty*p.price_ht)+' HT</b></div>'+
+ '<div class="qtyrow"><div class="reviewstep"><button class="outline tiny" data-review-action="minus" data-product="'+safe(p.id)+'" aria-label="Retirer une bouteille">−</button><input class="reviewqty" type="number" min="0" max="'+max+'" step="1" value="'+qty+'" data-review-id="'+safe(p.id)+'" aria-label="Quantité de '+safe(p.name)+'"><button class="outline tiny" data-review-action="plus" data-product="'+safe(p.id)+'" '+(qty>=max?'disabled':'')+' aria-label="Ajouter une bouteille">+</button></div><button class="outline tiny" data-review-action="remove" data-product="'+safe(p.id)+'">Retirer la référence</button></div></div>'
+ }).join(''):'<p>Votre panier est vide. Revenez au catalogue pour ajouter des références.</p>';
+ const count=chosen.reduce((n,p)=>n+quantities[p.id],0);
+ const total=chosen.reduce((n,p)=>n+quantities[p.id]*Number(p.price_ht),0);
+ $('review-count').textContent=count+' bouteille'+(count>1?'s':'');
+ $('review-total').textContent=euros(total);
+ $('review-send').disabled=count===0||sending;
+ $('review-send').textContent=sending?'Envoi en cours…':editing?'Confirmer les modifications':'Confirmer et envoyer ma commande';
+ document.querySelectorAll('[data-review-action]').forEach(b=>b.onclick=()=>{
+  const p=catalog.find(x=>x.id===b.dataset.product);if(!p)return;
+  const val=quantities[p.id]||0;const max=Math.min(60,p.max_quantity||60);
+  quantities[p.id]=b.dataset.reviewAction==='remove'?0:Math.max(0,Math.min(max,val+(b.dataset.reviewAction==='plus'?1:-1)));
+  renderReview();
+ });
+ document.querySelectorAll('[data-review-id]').forEach(input=>input.onchange=()=>{
+  const p=catalog.find(x=>x.id===input.dataset.reviewId);if(!p)return;
+  const n=Number(input.value),max=Math.min(60,p.max_quantity||60);
+  if(!Number.isInteger(n)||n<0||n>max){notice('Quantité valide : de 0 à '+max+' bouteilles.',true);input.value=quantities[p.id]||0;return}
+  quantities[p.id]=n;renderReview();
+ });
+}
+$('submit').onclick=showReview;
+$('review-back').onclick=()=>{
+ reviewing=false;$('order-review').classList.add('hide');$('catalog-edit').classList.remove('hide');render();$('catalog-edit').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('review-send').onclick=async()=>{
+ if(sending)return;
+ // Revalidate every quantity and compute the final summary before submission.
  const lines=catalog.filter(p=>quantities[p.id]>0).map(p=>({product_id:p.id,quantity:quantities[p.id]}));
- if(!lines.length)return notice('Sélectionnez au moins une bouteille.',true);
- if(!confirm((editing?'Modifier':'Envoyer')+' cette demande de '+lines.reduce((s,x)=>s+x.quantity,0)+' bouteille(s) ?\nTotal estimé '+euros(lines.reduce((s,x)=>s+x.quantity*Number(catalog.find(p=>p.id===x.product_id).price_ht),0))+' HT\nSous réserve de confirmation par Winess.'))return;
- $('submit').disabled=true;
+ if(!lines.length)return notice('Le panier est vide. Modifiez votre commande pour continuer.',true);
+ if(lines.some(l=>!Number.isInteger(l.quantity)||l.quantity<1||l.quantity>60))return notice('Quantité invalide. Corrigez votre panier.',true);
+ const amount=lines.reduce((sum,l)=>sum+Number(catalog.find(p=>p.id===l.product_id).price_ht)*l.quantity,0);
+ const count=lines.reduce((sum,l)=>sum+l.quantity,0);
+ sending=true;renderReview();
  try{
- const d=await call('submit_order',{lines,comment:$('order-comment').value.trim(),...(editing?{order_id:editing.id,version:editing.version}:{})});
- editing=null;quantities={};$('order-comment').value='';render();await getOrders();tab('history');
- openPopup('Commande envoyée','Votre demande n°'+d.order.order_number+' a bien été reçue. Confirmation des quantités par Winess en attente.',d.order.id);notice('Commande envoyée et enregistrée. L’envoi e-mail au commercial n’est pas encore activé.');
- }catch(e){notice('Commande non enregistrée : '+e.message,true)}finally{$('submit').disabled=false}
+  const d=await call('submit_order',{lines,comment:$('order-comment').value.trim(),...(editing?{order_id:editing.id,version:editing.version}:{})});
+  editing=null;reviewing=false;quantities={};$('order-comment').value='';sending=false;
+  $('order-review').classList.add('hide');$('catalog-edit').classList.remove('hide');render();
+  await getOrders();tab('history');
+  openPopup('Commande envoyée','Votre demande de '+count+' bouteilles, pour '+euros(amount)+' HT, a bien été envoyée sous le numéro '+d.order.order_number+'. Winess confirmera les quantités.',d.order.id);
+  notice('Commande enregistrée dans votre historique. Les quantités sont en attente de confirmation par Winess.');
+ }catch(e){notice('Commande non envoyée : '+e.message,true);sending=false;renderReview()}
 };
 $('reload-orders').onclick=async()=>{await getOrders();await getMessages()};
 $('logout').onclick=()=>{localStorage.removeItem(key);sessionStorage.removeItem(key);session='';location.reload()};
